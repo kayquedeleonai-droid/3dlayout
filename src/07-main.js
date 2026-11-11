@@ -186,7 +186,7 @@ function sanitizeProject(d) {
   p.objects = (d.objects || []).filter(o => ASSETS[o.type]).map(o => {
     const base = Object.assign({ px: 0, py: 0, pz: 0, rx: 0, ry: 0, rz: 0, sx: 1, sy: 1, sz: 1 }, o.base || {}); if (o.type === 'camera' && base.focal == null) base.focal = 35;
     const tracks = {}; for (const ch in (o.tracks || {})) { const ks = (o.tracks[ch] || []).map(k => Object.assign(mkKey(k.f, k.v), k)); if (ks.length) { sortKeys(ks); autoHandles(ks); tracks[ch] = ks; } }
-    return { id: o.id || uid(), type: o.type, name: o.name || ASSETS[o.type].label, params: Object.assign(defaultParams(o.type), o.params || {}), base, tracks, cons: Object.assign({ aim: null, aimH: 1, follow: null, mount: null, shake: 0, shakeFreq: 1.5 }, o.cons || {}), hidden: !!o.hidden, refs: o.refs || undefined, clips: (o.clips || []).filter(c => PERSON_ACTIONS[c.kind] || QUAD_ACTIONS[c.kind]).map(c => ({ id: c.id || uid('c'), kind: c.kind, start: +c.start, end: +c.end })) };
+    return { id: o.id || uid(), type: o.type, name: o.name || ASSETS[o.type].label, params: Object.assign(defaultParams(o.type), o.params || {}), base, tracks, cons: Object.assign({ aim: null, aimH: 1, follow: null, mount: null, shake: 0, shakeFreq: 1.5 }, o.cons || {}), hidden: !!o.hidden, refs: o.refs || undefined, custom: o.custom || undefined, clips: (o.clips || []).filter(c => PERSON_ACTIONS[c.kind] || QUAD_ACTIONS[c.kind]).map(c => ({ id: c.id || uid('c'), kind: c.kind, start: +c.start, end: +c.end })) };
   });
   if (p.activeCamera && !p.objects.find(o => o.id === p.activeCamera)) p.activeCamera = null;
   p.shots = (d.shots || []).filter(s => p.objects.find(o => o.id === s.cam)).map(s => ({ cam: s.cam, start: Math.round(+s.start || 0), end: Math.round(+s.end || 0) }));

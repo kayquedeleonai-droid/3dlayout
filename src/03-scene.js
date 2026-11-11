@@ -46,7 +46,8 @@ function buildRuntime(o) {
   const old = rt.get(o.id); if (old) { world.remove(old.g); disposeGroup(old.g); }
   const d = ASSETS[o.type];
   const p = Object.assign(defaultParams(o.type), o.params);
-  const g = d.build(p);
+  let g = o.custom ? buildCustomGroup(o) : null;
+  if (!g) g = d.build(p);
   buildRefs(o, g);
   g.userData.objId = o.id; g.rotation.order = 'YXZ';
   const helpers = [];
@@ -173,7 +174,7 @@ function applyFrame(f) {
     if (gizmoDragging && sel === o.id) { /* gizmo controla */ }
     else evalTransform(o, f);
     const d = ASSETS[o.type];
-    if (d.anim && r.rig) d.anim(r.rig, animCtx(o, f), r.p);
+    if (r.rig && r.rig.custom) animCustom(r.rig, animCtx(o, f)); else if (d.anim && r.rig) d.anim(r.rig, animCtx(o, f), r.p);
     if (o.clips && o.clips.length && r.rig) applyClip(o, r, f);
     if (o.type === 'camera') updateFrustum(r.rig, r.rig.cam.fov, r.rig.cam.aspect, project.activeCamera === o.id, sel === o.id ? camFocus(o, f) : 0);
   }

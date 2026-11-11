@@ -69,7 +69,7 @@ function duplicateObject(id) {
 /* ============================================================
    INSPETOR
    ============================================================ */
-const secState = { xf: true, cam: true, cons: false, par: true, gen: false, car: true, ref: false, sens: false };
+const secState = { xf: true, cam: true, cons: false, par: true, gen: false, car: true, ref: false, sens: false, model: true };
 function sec(id, title, body, extra = '') { return `<div class="sec ${secState[id] ? '' : 'closed'}" data-sec="${id}"><div class="sech"><span class="car">${secState[id] ? '▼' : '▶'}</span>${title}<span class="grow"></span>${extra}</div><div class="secb">${body}</div></div>`; }
 function chRow(o, ch) {
   const d = CH[ch], g = GROUPS[d.g];
@@ -113,6 +113,7 @@ function renderInspector() {
     const act = project.activeCamera === o.id;
     h += sec('cam', 'Câmera & lente', cameraSectionHTML(o));
   }
+  if (!isCam && (swapOptions(o) || o.custom)) h += sec('model', 'Modelo' + (o.custom ? ' <span style="color:var(--acc)">•</span>' : ''), modelSectionHTML(o));
   h += sec('xf', 'Transformação', grpBlock(o, 'pos') + grpBlock(o, 'rot') + grpBlock(o, 'scl') + `<div class="hint">Cronômetro ⏱ liga a animação: depois disso, qualquer mudança cria keyframe no frame atual (como no After Effects).</div>`);
   const c = o.cons;
   h += sec('cons', 'Restrições' + (c.aim || c.follow || c.shake ? ' <span style="color:var(--acc)">•</span>' : ''), `
