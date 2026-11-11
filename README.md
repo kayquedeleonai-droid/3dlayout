@@ -30,14 +30,8 @@ npm run build    # só gera public/index.html
 ```
 
 ## Deploy (Cloudflare)
-O workflow `.github/workflows/deploy.yml` publica a cada push na `main`. Configure uma vez:
-
-1. **Domínio**: a zona `kayquedeleon.app` precisa estar na sua conta Cloudflare. O `wrangler.jsonc` já cria o domínio personalizado `3dlayout.kayquedeleon.app` (DNS e certificado são automáticos).
-2. **Token da API**: Cloudflare → My Profile → API Tokens → *Create Token* → modelo **Edit Cloudflare Workers**, incluindo a zona `kayquedeleon.app` (permissões *Workers Scripts: Edit*, *Workers Routes: Edit*, *Zone: Read*, *DNS: Edit*).
-3. **Secrets no GitHub** (repositório → Settings → Secrets and variables → Actions):
-   - `CLOUDFLARE_API_TOKEN` — o token acima
-   - `CLOUDFLARE_ACCOUNT_ID` — o ID da conta (painel da Cloudflare, barra lateral)
-4. Rode o workflow (aba *Actions* → *Deploy Cloudflare* → *Run workflow*) ou faça um push.
+O repositório está conectado ao **Cloudflare Workers Builds**: cada push na `main` roda `npm run build` e `npx wrangler deploy`.
+O `wrangler.jsonc` publica o Worker **3dlayout** com o domínio personalizado `3dlayout.kayquedeleon.app` (DNS e certificado automáticos; a zona `kayquedeleon.app` precisa estar na mesma conta).
 
 ### IA no site próprio (opcional)
 Dentro do claude.ai o app usa a conta do Claude do usuário. No domínio próprio, os recursos de IA (diretor por prompt, editar cena, traçar silhueta, preencher ficha) passam pelo Worker:
