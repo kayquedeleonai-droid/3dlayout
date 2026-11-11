@@ -1,0 +1,13 @@
+{
+  "name": "3dlayout",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/build.mjs && npx wrangler dev",
+    "deploy": "node scripts/build.mjs && npx wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  // Cloudflare Worker com assets estáticos — publica em https://3dlayout.kayquedeleon.app
+  "name": "3dlayout",
+  "main": "worker/index.js",
+  "compatibility_date": "2025-09-01",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  "routes": [
+    { "pattern": "3dlayout.kayquedeleon.app", "custom_domain": true }
+  ],
+  "observability": { "enabled": true }
+}

@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Layout3D — Previz procedural</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg0:#0d0d0e; --bg1:#141415; --bg2:#1b1b1d; --bg3:#232326; --bg4:#2d2d31;
+  --line:#232326; --line2:#303034;
+  --tx:#ececee; --tx2:#a1a1a8; --tx3:#6c6c74;
+  --acc:#f2a33a; --acc2:#ffbf5e; --accbg:rgba(242,163,58,.13);
+  --sel:#7aa7ff; --selbg:rgba(122,167,255,.14);
+  --red:#ef5a50; --grn:#6cc86a; --blu:#4f9cf0; --key:#f2c14e;
+  --tl-h:300px; --r:8px;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg0);color:var(--tx);font:12.5px/1.4 Inter,system-ui,sans-serif;overflow:hidden;user-select:none;-webkit-user-select:none}
+button{font:inherit;color:inherit;background:var(--bg3);border:1px solid var(--line2);border-radius:7px;padding:5px 10px;cursor:pointer;white-space:nowrap;transition:background .12s,border-color .12s}
+button:hover{background:var(--bg4)}
+button.on{background:var(--selbg);border-color:rgba(122,167,255,.55);color:#cfe0ff}
+button.pri{background:#f3f3f5;border-color:#f3f3f5;color:#111;font-weight:600}
+button.pri:hover{background:#fff}
+button.rec{background:#4a1a17;border-color:var(--red);color:#ffd5d2}
+button.ghost{background:transparent;border-color:transparent}
+button.ghost:hover{background:var(--bg3)}
+button.icon{width:32px;height:32px;padding:0;display:grid;place-items:center;background:transparent;border-color:transparent;color:var(--tx2);font-size:15px}
+button.icon:hover{background:var(--bg3);color:var(--tx)}
+button.icon.on{background:var(--bg4);color:var(--tx);border-color:var(--line2)}
+button:disabled{opacity:.4;cursor:default}
+input,select,textarea{font:inherit;color:var(--tx);background:var(--bg2);border:1px solid var(--line2);border-radius:7px;padding:5px 8px;outline:none}
+input:focus,select:focus,textarea:focus{border-color:#55555c}
+input[type=color]{padding:0 2px;height:26px;width:42px;cursor:pointer}
+input[type=checkbox]{accent-color:#e9e9ec}
+input[type=range]{accent-color:#e9e9ec;padding:0;border:0;background:transparent}
+.mono{font-family:var(--mono)}
+#app{display:grid;grid-template-rows:50px 1fr 4px var(--tl-h);height:100vh}
+/* topo */
+#top{display:flex;align-items:center;gap:6px;padding:0 12px;background:var(--bg1);border-bottom:1px solid var(--line)}
+#top .brand{font-weight:600;font-size:14px;display:flex;align-items:center;gap:9px;margin-right:6px}
+#top .brand i{width:18px;height:18px;border-radius:5px;background:conic-gradient(from 210deg,#f2a33a,#ef5a50,#7aa7ff,#6cc86a,#f2a33a);display:inline-block}
+#top .sep{width:1px;height:22px;background:var(--line2);margin:0 4px}
+#top .grow{flex:1}
+#top .center{display:flex;gap:6px;align-items:center}
+#top select{height:32px}
+.seg{display:inline-flex;background:var(--bg2);border:1px solid var(--line2);border-radius:9px;padding:2px;gap:2px}
+.seg button{border:0;background:transparent;border-radius:7px;padding:5px 12px;color:var(--tx2)}
+.seg button.on{background:var(--bg4);color:var(--tx)}
+/* layout */
+#main{display:grid;grid-template-columns:276px 1fr 310px;min-height:0}
+.panel{background:var(--bg1);min-height:0;display:flex;flex-direction:column}
+#left{border-right:1px solid var(--line)}
+#right{border-left:1px solid var(--line)}
+.ph{padding:10px 14px;font-weight:600;font-size:13px;color:var(--tx);display:flex;align-items:center;gap:8px;background:var(--bg1)}
+.ph .grow{flex:1}
+.ph .sub{font-weight:400;color:var(--tx3);font-size:11px}
+/* biblioteca */
+#libTabs{display:flex;gap:2px;padding:0 10px 8px;border-bottom:1px solid var(--line)}
+#libTabs button{flex:1;height:34px;padding:0;border:0;background:transparent;border-bottom:2px solid transparent;border-radius:0;font-size:15px;color:var(--tx3)}
+#libTabs button:hover{color:var(--tx)}
+#libTabs button.on{color:var(--tx);border-bottom-color:var(--tx)}
+#libSearch{margin:10px 12px 4px;width:calc(100% - 24px)}
+#assets{flex:1;overflow:auto;padding:4px 12px 14px}
+.acat{margin:12px 2px 7px;color:var(--tx3);font-size:11px;font-weight:500}
+.agrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.card{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:0;overflow:hidden;text-align:left;display:flex;flex-direction:column;cursor:pointer;transition:border-color .12s,transform .12s}
+.card:hover{border-color:#4a4a50;background:var(--bg2)}
+.card:active{transform:scale(.98)}
+.card .th{aspect-ratio:4/3;background:radial-gradient(120% 90% at 50% 0%,#2f2f33,#1a1a1c);display:grid;place-items:center;font-size:30px;position:relative}
+.card .th img{width:100%;height:100%;object-fit:cover;display:block}
+.card .nm{padding:7px 9px 1px;font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .sb{padding:0 9px 8px;font-size:10.5px;color:var(--tx3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card.dis{opacity:.35;pointer-events:none}
+.libhint{color:var(--tx3);font-size:11.5px;line-height:1.5;margin:8px 2px;padding:8px 10px;background:var(--bg2);border-radius:8px;border:1px solid var(--line)}
+/* objetos */
+#objPanel{height:40%;min-height:140px;display:flex;flex-direction:column;border-bottom:1px solid var(--line)}
+#objSearch{margin:0 12px 6px;width:calc(100% - 24px)}
+#outliner{flex:1;overflow:auto;padding-bottom:6px}
+.ogrp{display:flex;align-items:center;gap:7px;padding:7px 14px;font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--tx2);cursor:pointer}
+.ogrp .n{margin-left:auto;font-weight:500;color:var(--tx3)}
+.orow{display:flex;align-items:center;gap:8px;padding:5px 14px 5px 26px;cursor:pointer;border-radius:6px;margin:0 6px}
+.orow:hover{background:var(--bg2)}
+.orow.sel{background:var(--selbg)}
+.orow .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.orow .ic{opacity:.45;font-size:12px;cursor:pointer;padding:0 3px}
+.orow .ic:hover{opacity:1}
+.orow .anim{color:var(--key);font-size:9px}
+#propPanel{flex:1;min-height:0;display:flex;flex-direction:column}
+#insp{flex:1;overflow:auto}
+/* viewport */
+#vpwrap{position:relative;min-width:0;min-height:0;background:#0b0b0c;overflow:hidden}
+#vp{position:absolute;inset:0}
+#vp canvas{display:block}
+#overlay2d{position:absolute;inset:0;pointer-events:none}
+#labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.lbl{position:absolute;transform:translate(-50%,-100%);font-weight:600;font-size:12.5px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.9);white-space:nowrap;padding-bottom:6px}
+.lbl.cam{font-weight:500;font-size:11px;color:#ffd79a}
+.lbl.sel{color:#cfe0ff}
+#rail{position:absolute;left:12px;top:12px;display:flex;flex-direction:column;gap:2px;background:rgba(20,20,22,.92);border:1px solid var(--line2);border-radius:12px;padding:5px;backdrop-filter:blur(8px)}
+#rail .sep{height:1px;background:var(--line2);margin:4px 3px}
+#rail button{width:34px;height:34px;padding:0;border:0;background:transparent;border-radius:8px;color:var(--tx2);font-size:15px;position:relative}
+#rail button:hover{background:var(--bg3);color:var(--tx)}
+#rail button.on{background:var(--bg4);color:#fff}
+#rail button sub{position:absolute;right:4px;bottom:2px;font-size:8px;color:var(--tx3)}
+#vptools{display:none}
+#vpinfo{display:none}
+#pip{position:absolute;right:12px;top:12px;border:1px solid var(--line2);border-radius:12px;overflow:hidden;background:transparent;box-shadow:0 10px 30px rgba(0,0,0,.45)}
+#pip .pbar{display:flex;align-items:center;gap:6px;padding:6px;background:rgba(20,20,22,.94)}
+#pip .pbar select{height:28px;flex:1;min-width:0;font-size:12px;background:var(--bg2)}
+#pip .pbody{position:relative}
+#pip.min .pbody{display:none}
+#viewBar{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;gap:6px;align-items:center;background:rgba(20,20,22,.94);border:1px solid var(--line2);border-radius:12px;padding:5px 6px;backdrop-filter:blur(8px)}
+#viewBar select{height:30px;border:0;background:transparent;font-weight:500;padding-right:4px}
+#axesWrap{position:absolute;right:14px;bottom:14px;display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+#axesBox{width:86px;height:96px;background:rgba(20,20,22,.94);border:1px solid var(--line2);border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center}
+#axesC{width:70px;height:70px}
+#fovTxt{font-size:10.5px;color:var(--tx2);margin-top:-2px}
+#bResetView{background:rgba(20,20,22,.94);border-color:var(--line2);border-radius:10px;font-size:12px}
+#lensBar{position:absolute;left:50%;bottom:64px;transform:translateX(-50%);display:flex;flex-direction:column;gap:6px;background:rgba(20,20,22,.94);border:1px solid var(--line2);border-radius:12px;padding:7px 9px;backdrop-filter:blur(8px);max-width:calc(100% - 140px);box-shadow:0 10px 30px rgba(0,0,0,.4)}
+.lbrow{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+#lensBar select{height:28px;max-width:230px;font-size:12px}
+#lensBar input[type=number]{width:52px;height:26px;padding:2px 5px;font-family:var(--mono);margin-left:4px}
+.lbt{color:var(--tx2);font-size:12px;display:flex;align-items:center;gap:3px;white-space:nowrap}
+.lbinfo{color:var(--tx3);font-size:11px;margin-left:auto;padding-left:8px;white-space:nowrap}
+#lensBar .chip{padding:3px 9px;font-family:var(--mono);font-size:11.5px}
+#pilotHud{position:absolute;left:50%;bottom:66px;transform:translateX(-50%);background:rgba(16,16,18,.95);border:1px solid var(--line2);border-radius:14px;padding:12px 16px;display:none;gap:16px;align-items:center;box-shadow:0 12px 40px rgba(0,0,0,.55)}
+#pilotHud.show{display:flex}
+#pilotHud .keys{color:var(--tx2);font-size:11.5px;line-height:1.7}
+kbd{font-family:var(--mono);background:var(--bg3);border:1px solid var(--line2);border-bottom-width:2px;border-radius:4px;padding:0 4px;color:var(--tx);font-size:10.5px}
+#pilotHud .speed{font-family:var(--mono);font-size:24px;color:#fff;min-width:96px;text-align:center}
+#pilotHud .speed small{display:block;font-size:10px;color:var(--tx3)}
+#recDot{width:10px;height:10px;border-radius:50%;background:var(--red);display:inline-block;animation:blink 1s infinite}
+@keyframes blink{50%{opacity:.25}}
+#resizer{background:var(--line);cursor:ns-resize}
+#resizer:hover{background:#4a4a50}
+/* timeline */
+#tl{display:grid;grid-template-rows:42px 1fr;background:var(--bg1);min-height:0}
+#tlbar{display:flex;align-items:center;gap:5px;padding:0 10px;border-bottom:1px solid var(--line);overflow-x:auto;overflow-y:hidden}
+#tlbar .sep{width:1px;height:20px;background:var(--line2);margin:0 4px;flex:none}
+#tlbar input.num{width:58px;text-align:center;font-family:var(--mono)}
+#tlbar label{color:var(--tx2);display:flex;align-items:center;gap:6px;white-space:nowrap}
+#tlbar button{padding:4px 8px}
+#tlbar button.icon{width:30px;height:30px}
+#tlbar .grow{flex:1}
+#tlMode{height:30px;font-weight:600;background:transparent;border-color:transparent}
+#tcode{color:var(--tx2);font-family:var(--mono);font-size:11.5px;white-space:nowrap}
+.mini{font-size:11px;padding:3px 7px!important;color:var(--tx2)}
+#tlbody{display:grid;grid-template-columns:200px 1fr;min-height:0}
+#chanList{border-right:1px solid var(--line);overflow:auto;background:var(--bg1);position:relative}
+#tlcanvasWrap{position:relative;min-width:0;min-height:0}
+#tlcanvas{position:absolute;inset:0;display:block}
+.crow{display:flex;align-items:center;gap:7px;padding:0 10px;cursor:pointer;font-size:12px;border-bottom:1px solid #1d1d20}
+.crow:hover{background:var(--bg2)}
+.crow .cdot{width:8px;height:8px;border-radius:50%}
+.crow.off{opacity:.4}
+.crow .add{margin-left:auto;width:22px;height:22px;padding:0;border:0;background:transparent;color:var(--tx3);font-size:15px;border-radius:6px}
+.crow .add:hover{background:var(--bg4);color:#fff}
+.crow.grp{color:var(--tx2);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;cursor:default;border:0;padding-top:7px}
+.crow.grp:hover{background:none}
+#sbHead{position:sticky;bottom:0;height:46px;display:flex;align-items:center;padding:0 10px;gap:8px;background:var(--bg1);border-top:1px solid var(--line2);font-weight:600;font-size:12.5px;z-index:2}
+#sbHead button{margin-left:auto;width:26px;height:26px;padding:0;font-size:16px}
+/* inspetor */
+.sec{border-bottom:1px solid var(--line)}
+.sech{display:flex;align-items:center;gap:6px;padding:10px 14px;font-weight:600;cursor:pointer;color:var(--tx)}
+.sech .car{color:var(--tx3);font-size:9px;width:10px}
+.sech .grow{flex:1}
+.secb{padding:2px 14px 12px}
+.sec.closed .secb{display:none}
+.prow{display:grid;grid-template-columns:18px 70px 1fr 18px;align-items:center;gap:6px;margin:4px 0}
+.prow.wide{grid-template-columns:104px 1fr}
+.prow .lb{color:var(--tx2);cursor:ew-resize;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prow.wide .lb{cursor:default}
+.prow input[type=number],.prow input[type=text],.prow select{width:100%;min-width:0}
+.prow input[type=number]{font-family:var(--mono)}
+.prow input.animated{color:var(--key);border-color:#6a5420}
+.prow input.keyed{background:#2e2610}
+.kbtn{width:18px;height:18px;padding:0;display:grid;place-items:center;background:none;border:none;color:var(--tx3);font-size:11px}
+.kbtn:hover{color:var(--key);background:none}
+.kbtn.has{color:var(--key)}
+.sw{width:18px;height:18px;padding:0;border:none;background:none;color:var(--tx3);font-size:12px}
+.sw.on{color:var(--key)}
+.sw:hover{background:none;color:var(--acc2)}
+.grpl{display:flex;align-items:center;gap:4px;margin-top:10px;color:var(--tx2);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px}
+.grpl .grow{flex:1}
+.btnrow{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.hint{color:var(--tx3);font-size:11.5px;margin:7px 0;line-height:1.5}
+.empty{padding:28px 18px;color:var(--tx3);text-align:center;line-height:1.6}
+.empty b{color:var(--tx2)}
+.tog{position:relative;width:36px;height:20px;border-radius:12px;background:var(--bg4);border:0;padding:0;justify-self:end}
+.tog::after{content:'';position:absolute;left:3px;top:3px;width:14px;height:14px;border-radius:50%;background:#888;transition:.15s}
+.tog.on{background:#e9e9ec}
+.tog.on::after{left:19px;background:#111}
+/* modal */
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50;backdrop-filter:blur(3px)}
+#modal.show{display:flex}
+#modalBox{background:var(--bg1);border:1px solid var(--line2);border-radius:14px;width:min(700px,94vw);max-height:88vh;overflow:auto;box-shadow:0 24px 70px rgba(0,0,0,.6)}
+#modalBox h3{margin:0;padding:14px 18px;border-bottom:1px solid var(--line);font-size:14.5px;display:flex;align-items:center}
+#modalBox h3 .grow{flex:1}
+#modalBox .mb{padding:16px 18px}
+#modalBox textarea{width:100%;min-height:180px;font-family:var(--mono);font-size:11px;resize:vertical}
+.mgrid{display:grid;grid-template-columns:150px 1fr;gap:8px 10px;align-items:center}
+.mgrid label{color:var(--tx2)}
+.prog{height:6px;background:var(--bg3);border-radius:3px;overflow:hidden;margin-top:12px}
+.prog i{display:block;height:100%;background:#e9e9ec;width:0}
+.chip{border-radius:20px;padding:4px 11px;font-size:11.5px;background:var(--bg2)}
+.chip.ghosty{background:transparent;border-color:var(--line2);color:var(--tx2);white-space:normal;text-align:left}
+.pgrid{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.pchips{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+.pclb{width:82px;color:var(--tx2);font-size:11.5px}
+#toast{position:fixed;left:50%;top:60px;transform:translateX(-50%);background:var(--bg3);border:1px solid var(--line2);padding:9px 15px;border-radius:10px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:60;box-shadow:0 8px 24px rgba(0,0,0,.45);max-width:80vw}
+#toast.show{opacity:1}
+.helpgrid{display:grid;grid-template-columns:160px 1fr;gap:5px 12px;font-size:12px}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:5px;border:2px solid var(--bg1)}
+::-webkit-scrollbar-track{background:transparent}
+#fileIn{display:none}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top">
+    <div class="brand"><i></i>Layout3D <span style="color:var(--tx3);font-weight:400">Director</span></div>
+    <button class="icon" id="bHelp" title="Atalhos e ajuda">?</button>
+    <button class="icon" id="bUndo" title="Desfazer (Ctrl+Z)">↶</button>
+    <button class="icon" id="bRedo" title="Refazer (Ctrl+Shift+Z)">↷</button>
+    <button class="icon" id="bSave" title="Salvar projeto (Ctrl+S)">💾</button>
+    <button class="icon" id="bOpen" title="Abrir projeto">📂</button>
+    <div class="sep"></div>
+    <button class="ghost" id="bNew" title="Nova cena">Nova cena</button>
+    <button class="ghost" id="bDemo" title="Cena de exemplo">Exemplo</button>
+    <div class="grow"></div>
+    <div class="center">
+      <button id="bCreate" class="on" title="Criar ou editar a cena com texto">✨ Diretor por prompt</button>
+      <button id="bPrompt" class="ghost" title="Descrever o movimento em texto para IA de vídeo">✦ Descrever</button>
+    </div>
+    <div class="grow"></div>
+    <select id="selRender" title="Modo de render">
+      <option value="shaded">Playblast</option>
+      <option value="clay">Clay</option>
+      <option value="depth">Depth</option>
+      <option value="normal">Normal</option>
+      <option value="seg">Segmentação</option>
+    </select>
+    <select id="selAspect" title="Proporção da câmera">
+      <option value="16:9">16:9</option><option value="9:16">9:16</option><option value="1:1">1:1</option><option value="4:5">4:5</option><option value="2.39:1">2.39:1</option><option value="4:3">4:3</option>
+    </select>
+    <button id="bExport" class="pri" title="Exportar vídeo, imagem, GLB, dados">⤓ Exportar vídeo</button>
+    <button class="icon" id="bShot" title="Capturar frame (PNG)">📷</button>
+    <input type="file" id="fileIn" accept=".json,application/json">
+  </div>
+  <div id="main">
+    <div id="left" class="panel">
+      <div class="ph">Biblioteca <span class="grow"></span><span class="sub" id="assetCount"></span></div>
+      <div id="libTabs"></div>
+      <input id="libSearch" placeholder="Buscar personagens, objetos ou câmeras…">
+      <div id="assets"><div id="assetList"></div></div>
+    </div>
+    <div id="vpwrap">
+      <div id="vp"></div>
+      <canvas id="overlay2d"></canvas>
+      <div id="labels"></div>
+      <div id="rail">
+        <button id="tMove" class="on" title="Mover (W)">✥<sub>W</sub></button>
+        <button id="tRot" title="Girar (E)">⟳<sub>E</sub></button>
+        <button id="tScale" title="Escala (R)">⤢<sub>R</sub></button>
+        <div class="sep"></div>
+        <button id="tSpace" title="Espaço local / global">🌐</button>
+        <button id="tSnap" title="Snap 0,5 m / 15°">🧲</button>
+        <button id="tPath" class="on" title="Mostrar trajetórias">〰</button>
+        <button id="tGuides" class="on" title="Guias de enquadramento">▦</button>
+        <div class="sep"></div>
+        <button id="tPilot" title="Pilotar o objeto selecionado (P)">🎮</button>
+        <button id="tFocus" title="Enquadrar seleção (F)">◎</button>
+      </div>
+      <div id="vptools"></div><div id="vpinfo"></div>
+      <div id="pip"><div class="pbar"><select id="pipSel" title="Câmera do preview"></select><button class="icon" id="pipMin" title="Recolher" style="width:26px;height:26px">▴</button></div><div class="pbody" id="pipBody"></div></div>
+      <div id="viewBar"><span style="color:var(--tx3);padding-left:6px">◉</span><select id="viewSel" title="Vista do viewport (C alterna)"></select><span style="width:1px;height:18px;background:var(--line2)"></span><select id="guideSel" title="Guias de composição (na vista de câmera)"></select></div>
+      <div id="axesWrap"><div id="axesBox"><canvas id="axesC" width="140" height="140"></canvas><div id="fovTxt">FOV 45°</div></div><button id="bResetView">↺ Resetar vista</button></div>
+      <div id="pilotHud">
+        <div class="speed"><span id="hudSpeed">0</span><small id="hudUnit">km/h</small></div>
+        <div class="keys" id="hudKeys"></div>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <button id="hudRec" class="rec">● Gravar (R)</button>
+          <button id="hudReset" title="Voltar ao estado no frame atual (T)">↺ Reset (T)</button>
+          <button id="hudExit">Sair (Esc)</button>
+        </div>
+      </div>
+    </div>
+    <div id="right" class="panel">
+      <div id="objPanel"><div class="ph">Objetos <span class="grow"></span><span class="sub" id="objCount"></span></div><input id="objSearch" placeholder="Buscar objetos"><div id="outliner"></div></div>
+      <div id="propPanel"><div class="ph" style="border-top:0">Propriedades</div><div id="insp"></div></div>
+    </div>
+  </div>
+  <div id="resizer"></div>
+  <div id="tl">
+    <div id="tlbar">
+      <select id="tlMode" title="Modo da timeline"><option value="dope">Timeline</option><option value="graph">Graph Editor</option><option value="speed">Velocidade</option></select>
+      <button class="icon" id="pStart" title="Início (Home)">⏮</button>
+      <button class="icon" id="pPrevK" title="Keyframe anterior (J)">⇤</button>
+      <button class="icon" id="pPlay" title="Play/Pause (Espaço)">▶</button>
+      <button class="icon" id="pNextK" title="Próximo keyframe (L)">⇥</button>
+      <button class="icon on" id="bLoop" title="Loop">⟲</button>
+      <span id="tcode"></span>
+      <input id="fCur" class="num" type="number" title="Frame atual" style="width:56px">
+      <div class="sep"></div>
+      <button class="mini" id="iLinear" title="Interpolação linear">Linear</button>
+      <button class="mini" id="iBezier" title="Bezier automático">Auto</button>
+      <button class="mini" id="iEase" title="Easy Ease (F9)">Easy Ease</button>
+      <button class="mini" id="iEaseIn" title="Easy Ease In (Shift+F9)">In</button>
+      <button class="mini" id="iEaseOut" title="Easy Ease Out (Ctrl+Shift+F9)">Out</button>
+      <button class="mini" id="iHold" title="Hold">Hold</button>
+      <button class="mini" id="iFit" title="Enquadrar (F)">⤢</button>
+      <button class="mini" id="iDel" title="Apagar keys/clipe/plano selecionado (Delete)">🗑</button>
+      <button class="mini" id="bShots" title="Lista de cortes">✂ Cortes</button>
+      <div class="grow"></div>
+      <label>Frame rate <select id="fpsSel"><option>24</option><option>25</option><option>30</option><option>48</option><option>60</option></select></label>
+      <label>Duração <input id="durIn" class="num" type="number" min="0.5" step="0.5" title="Duração em segundos"> s</label>
+      <label title="Zoom da timeline">－<input type="range" id="tlZoom" min="0" max="100" value="0" style="width:90px">＋</label>
+      <button class="mini" id="pPrev" style="display:none"></button><button class="mini" id="pNext" style="display:none"></button><button class="mini" id="pEnd" style="display:none"></button>
+    </div>
+    <div id="tlbody">
+      <div id="chanList"></div>
+      <div id="tlcanvasWrap"><canvas id="tlcanvas"></canvas></div>
+    </div>
+  </div>
+</div>
+<div id="modal"><div id="modalBox"></div></div>
+<div id="toast"></div>
