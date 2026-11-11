@@ -221,4 +221,4 @@ function init() {
   setTLMode('dope'); fitTime(); setFrame(0);
   requestAnimationFrame(loopFn);
 }
-window.__layout = { get project() { return project; }, get curFrame() { return curFrame; }, get pilot() { return pilot; }, add: (t, o) => addObject(t, o), setFrame: f => setFrame(f), select: id => select(id), cam: editorCam, orbit };
+window.__layout = { get project() { return project; }, get curFrame() { return curFrame; }, get pilot() { return pilot; }, add: (t, o) => addObject(t, o), setFrame: f => setFrame(f), select: id => select(id), cam: editorCam, orbit, ev: s => eval(s) };

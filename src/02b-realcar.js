@@ -33,7 +33,8 @@ const BODY_TPL = {
 };
 function tireRadius(spec, fallback) { const m = String(spec || '').match(/(\d{3})\s*\/\s*(\d{2})\s*Z?R?\s*(\d{2})/i); if (!m) return fallback; return (+m[3] * 25.4 + 2 * (+m[1]) * (+m[2]) / 100) / 2000; }
 function tireWidth(spec, fallback) { const m = String(spec || '').match(/(\d{3})\s*\//); return m ? +m[1] / 1000 : fallback; }
-function buildRealCar(p) {
+function buildRealCar(p) { return p.body === 'traced' || !CAR_TPL[p.body] ? buildRealCarTraced(p) : buildCarLoft(p); }
+function buildRealCarTraced(p) {
   const g = new THREE.Group(), rig = { wheels: [], steer: [] };
   let T = BODY_TPL[p.body] || BODY_TPL.sedan, traced = null;
   if (p.body === 'traced' && p.profile) { try { traced = JSON.parse(p.profile); T = traced; } catch (e) { T = BODY_TPL.sedan; } }
