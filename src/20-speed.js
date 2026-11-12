@@ -127,7 +127,7 @@ const speedHud = document.createElement('div'); speedHud.style.cssText = 'positi
 renderer.domElement.parentElement.appendChild(speedHud);
 function updateSpeedHud(f) {
   const o = sel && getObj(sel);
-  if (!o || !ASSETS[o.type].pilot || o.type === 'camera' && !(o.gear && o.gear.type !== 'none')) { speedHud.style.display = 'none'; return; }
+  if (cinema || !o || !ASSETS[o.type].pilot || o.type === 'camera' && !(o.gear && o.gear.type !== 'none')) { speedHud.style.display = 'none'; return; }
   if (pilot.on && pilot.id === o.id) { speedHud.style.display = 'block'; speedHud.textContent = `🎮 ${fmtV(Math.abs(pilot.s.v))} · ${fmtKm(pilot.s.dist || 0)}`; return; }
   const od = odometer(o), i = clamp(Math.round(f), 0, project.duration); if (od.maxV < 0.01) { speedHud.style.display = 'none'; return; }
   speedHud.style.display = 'block'; speedHud.innerHTML = `${ASSETS[o.type].icon} <span style="font-size:15px">${fmtV(od.speed[i])}</span> <span style="color:#9aa0a6;font-weight:500">· ${fmtKm(od.dist[i])} percorridos</span>`;

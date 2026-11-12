@@ -37,6 +37,16 @@ input[type=color]{padding:0 2px;height:26px;width:42px;cursor:pointer}
 input[type=checkbox]{accent-color:#e9e9ec}
 input[type=range]{accent-color:#e9e9ec;padding:0;border:0;background:transparent}
 .mono{font-family:var(--mono)}
+body.cinema #vpwrap{position:fixed;inset:0;z-index:80;background:#000}
+body.cinema #rail,body.cinema #vptools,body.cinema #viewBar,body.cinema #lensBar,body.cinema #axesWrap,body.cinema #pip,body.cinema #vpinfo,body.cinema .lbl,body.cinema #labels{display:none!important}
+#cineBar{position:absolute;left:0;right:0;bottom:0;padding:14px 22px 18px;background:linear-gradient(transparent,rgba(0,0,0,.85));display:none;z-index:90;font:500 12px Inter,sans-serif;color:#e8eaed}
+body.cinema #cineBar{display:block}
+#cineBar .row{display:flex;align-items:center;gap:12px}
+#cineBar button{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:#fff;border-radius:8px;padding:6px 12px;font:600 12px Inter;cursor:pointer}
+#cineSegs{position:relative;flex:1;height:30px;cursor:pointer;display:flex;gap:2px}
+#cineSegs .sg{position:relative;height:100%;border-radius:4px;overflow:hidden;background:rgba(255,255,255,.08);font:600 10.5px Inter;color:rgba(255,255,255,.85);padding:7px 6px 0;white-space:nowrap;text-overflow:ellipsis;box-sizing:border-box;min-width:0}
+#cineSegs .sg i{position:absolute;left:0;top:0;bottom:0;width:3px}
+#cineHead{position:absolute;top:-4px;bottom:-4px;width:2px;background:#fff;pointer-events:none;box-shadow:0 0 6px #fff}
 #app{display:grid;grid-template-rows:50px 1fr 4px var(--tl-h);height:100vh}
 /* topo */
 #top{display:flex;align-items:center;gap:6px;padding:0 12px;background:var(--bg1);border-bottom:1px solid var(--line)}
@@ -247,6 +257,7 @@ kbd{font-family:var(--mono);background:var(--bg3);border:1px solid var(--line2);
     <select id="selAspect" title="Proporção da câmera">
       <option value="16:9">16:9</option><option value="9:16">9:16</option><option value="1:1">1:1</option><option value="4:5">4:5</option><option value="2.39:1">2.39:1</option><option value="4:3">4:3</option>
     </select>
+    <button id="bWatch" title="Assistir o filme inteiro: todos os planos em sequência, em tela cheia">▶ Assistir filme</button>
     <button id="bExport" class="pri" title="Exportar vídeo, imagem, GLB, dados">⤓ Exportar vídeo</button>
     <button class="icon" id="bShot" title="Capturar frame (PNG)">📷</button>
     <input type="file" id="fileIn" accept=".json,application/json">
@@ -2670,9 +2681,9 @@ function renderViewport(dt) {
   octx.setTransform(d, 0, 0, d, 0, 0); octx.clearRect(0, 0, w, h);
   if (camView) {
     const r = viewRect(), y0 = h - r.y - r.h;
-    drawGuides(octx, r, y0);
+    if (!cinema) drawGuides(octx, r, y0);
     const co = getObj(viewCamId());
-    if (co) { const focal = pilot.on && pilot.id === co.id ? pilot.s.focal : getVal(co, 'focal', curFrame); octx.font = '11px JetBrains Mono, monospace'; octx.fillStyle = 'rgba(255,255,255,.85)'; const cdx = camDescription(co, curFrame), tx = Math.max(r.x + 10, 64); octx.fillText(`${co.name} · ${cdx.lens} · ${project.aspect}`, tx, y0 + 18); octx.fillStyle = 'rgba(255,255,255,.6)'; octx.fillText(`${cdx.body} · ${cdx.dof}`, tx, y0 + 32); octx.fillStyle = 'rgba(255,255,255,.85)'; octx.textAlign = 'right'; octx.fillText(timecode(curFrame) + `  f${curFrame}`, r.x + r.w - 10, y0 + 18); octx.textAlign = 'left'; }
+    if (co && !cinema) { const focal = pilot.on && pilot.id === co.id ? pilot.s.focal : getVal(co, 'focal', curFrame); octx.font = '11px JetBrains Mono, monospace'; octx.fillStyle = 'rgba(255,255,255,.85)'; const cdx = camDescription(co, curFrame), tx = Math.max(r.x + 10, 64); octx.fillText(`${co.name} · ${cdx.lens} · ${project.aspect}`, tx, y0 + 18); octx.fillStyle = 'rgba(255,255,255,.6)'; octx.fillText(`${cdx.body} · ${cdx.dof}`, tx, y0 + 32); octx.fillStyle = 'rgba(255,255,255,.85)'; octx.textAlign = 'right'; octx.fillText(timecode(curFrame) + `  f${curFrame}`, r.x + r.w - 10, y0 + 18); octx.textAlign = 'left'; }
   }
   if (pilot.rec) { octx.fillStyle = '#e8584f'; octx.beginPath(); octx.arc(w - 22, h - 22, 7, 0, 7); octx.fill(); octx.font = '600 12px Inter'; octx.textAlign = 'right'; octx.fillText('REC', w - 34, h - 18); octx.textAlign = 'left'; }
   const info = [];
@@ -4180,7 +4191,7 @@ $('#outliner').addEventListener('dblclick', e => { const r = e.target.closest('.
 /* ---------- vista do viewport / PiP ---------- */
 function renderViewSel() {
   const cams = project.objects.filter(o => o.type === 'camera');
-  const opts = [['free', '🎬 Vista do diretor']].concat(project.shots && project.shots.length ? [['cut', '✂ Edição (storyboard)']] : []).concat(cams.map(c => [c.id, '🎥 ' + c.name]));
+  const opts = [['free', '🎬 Vista do diretor']].concat(project.shots && project.shots.length ? [['cut', '🎞 Filme completo (todos os planos)']] : []).concat(cams.map(c => [c.id, '🎥 ' + c.name]));
   const vs = $('#viewSel'); vs.innerHTML = opts.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join(''); vs.value = viewPick; if (vs.value !== viewPick) { vs.value = 'free'; }
   const ps = $('#pipSel'), pv = ps.value || 'auto'; ps.innerHTML = `<option value="auto">Auto · plano atual</option>` + cams.map(c => `<option value="${c.id}">🎥 ${esc(c.name)}</option>`).join(''); ps.value = cams.find(c => c.id === pv) ? pv : 'auto';
 }
@@ -5118,7 +5129,7 @@ const speedHud = document.createElement('div'); speedHud.style.cssText = 'positi
 renderer.domElement.parentElement.appendChild(speedHud);
 function updateSpeedHud(f) {
   const o = sel && getObj(sel);
-  if (!o || !ASSETS[o.type].pilot || o.type === 'camera' && !(o.gear && o.gear.type !== 'none')) { speedHud.style.display = 'none'; return; }
+  if (cinema || !o || !ASSETS[o.type].pilot || o.type === 'camera' && !(o.gear && o.gear.type !== 'none')) { speedHud.style.display = 'none'; return; }
   if (pilot.on && pilot.id === o.id) { speedHud.style.display = 'block'; speedHud.textContent = `🎮 ${fmtV(Math.abs(pilot.s.v))} · ${fmtKm(pilot.s.dist || 0)}`; return; }
   const od = odometer(o), i = clamp(Math.round(f), 0, project.duration); if (od.maxV < 0.01) { speedHud.style.display = 'none'; return; }
   speedHud.style.display = 'block'; speedHud.innerHTML = `${ASSETS[o.type].icon} <span style="font-size:15px">${fmtV(od.speed[i])}</span> <span style="color:#9aa0a6;font-weight:500">· ${fmtKm(od.dist[i])} percorridos</span>`;
@@ -5174,7 +5185,7 @@ function seqHTML() {
   const total = (project.duration + 1) / fps, avg = S.length ? S.reduce((a, s) => a + (s.end - s.start + 1), 0) / S.length / fps : 0;
   const opt = (cur) => cams.map(c => `<option value="${c.id}" ${c.id === cur ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
   let h = `<div class="hint" style="margin-top:0">${S.length ? `<b>${S.length} planos</b> · duração média ${avg.toFixed(2).replace('.', ',')} s · filme de ${total.toFixed(1).replace('.', ',')} s a ${fps} fps.` : 'Sem planos: a edição usa só a câmera ativa.'} Todas as câmeras filmam a mesma ação (multicâmera): cada plano escolhe qual está no ar e em que trecho.</div>
-  <div class="btnrow" style="margin:8px 0 12px"><button class="pri" data-sq="play">▶ Tocar edição</button><button data-sq="split" ${cams.length ? '' : 'disabled'}>✂ Cortar no frame ${curFrame}</button><button data-sq="even" ${cams.length > 1 ? '' : 'disabled'}>Um plano por câmera</button><button data-sq="txt" ${S.length ? '' : 'disabled'}>⬇ Decupagem (.txt)</button><button data-sq="csv" ${S.length ? '' : 'disabled'}>⬇ Planilha (.csv)</button><button data-sq="clear" ${S.length ? '' : 'disabled'}>Limpar</button></div>`;
+  <div class="btnrow" style="margin:8px 0 12px"><button class="pri" data-sq="play">▶ Assistir filme (tela cheia)</button><button data-sq="split" ${cams.length ? '' : 'disabled'}>✂ Cortar no frame ${curFrame}</button><button data-sq="even" ${cams.length > 1 ? '' : 'disabled'}>Um plano por câmera</button><button data-sq="txt" ${S.length ? '' : 'disabled'}>⬇ Decupagem (.txt)</button><button data-sq="csv" ${S.length ? '' : 'disabled'}>⬇ Planilha (.csv)</button><button data-sq="clear" ${S.length ? '' : 'disabled'}>Limpar</button></div>`;
   h += `<div style="display:flex;flex-direction:column;gap:8px">` + S.map((sh, i) => {
     const I = shotInfo(sh, i), col = camColor(sh.cam), cur = curFrame >= sh.start && curFrame <= sh.end;
     return `<div data-shot="${i}" style="display:grid;grid-template-columns:150px 1fr;gap:10px;padding:8px;border-radius:10px;border:1px solid ${cur ? '#8bb6ff' : 'var(--line)'};background:${cur ? 'rgba(122,167,255,.08)' : 'var(--bg2,#17181b)'}">
@@ -5206,12 +5217,12 @@ function openSequencer() {
     });
     m.addEventListener('click', e => {
       const b = e.target.closest('[data-sq],[data-sqgo],[data-sqloop],[data-sqdup],[data-sqdel]'); if (!b) return; const S = project.shots, cams = project.objects.filter(o => o.type === 'camera');
-      if (b.dataset.sqgo != null) { const sh = S[+b.dataset.sqgo]; setFrame(sh.start); setView(sh.cam); rerender(); return; }
+      if (b.dataset.sqgo != null) { const sh = S[+b.dataset.sqgo]; setFrame(sh.start); setView('cut'); rerender(); return; }
       if (b.dataset.sqloop != null) { const sh = S[+b.dataset.sqloop]; seqLoop = { a: sh.start, b: sh.end }; setFrame(sh.start); setView('cam'); closeModal(); if (!playing) togglePlay(); toast(`Plano ${+b.dataset.sqloop + 1} em loop — Esc ou clique na timeline para sair`); return; }
       if (b.dataset.sqdup != null) { const i = +b.dataset.sqdup, sh = S[i], mid = Math.round((sh.start + sh.end) / 2); if (sh.end - sh.start < 2) return; S.splice(i + 1, 0, { cam: sh.cam, start: mid + 1, end: sh.end, name: (sh.name || '') + ' (b)', notes: sh.notes }); sh.end = mid; commit(); rerender(); return; }
       if (b.dataset.sqdel != null) { const i = +b.dataset.sqdel; const [x] = S.splice(i, 1); if (S[i - 1]) S[i - 1].end = x.end; else if (S[i]) S[i].start = x.start; commit(); rerender(); return; }
       const a = b.dataset.sq;
-      if (a === 'play') { seqLoop = null; setView('cam'); setFrame(0); closeModal(); if (!playing) togglePlay(); }
+      if (a === 'play') { closeModal(); openCinema(); }
       if (a === 'split') { const f = curFrame; normalizeShots(); if (!S.length) { const c0 = project.activeCamera || cams[0].id, c1 = (cams.find(c => c.id !== c0) || cams[0]).id; project.shots = f > 0 ? [{ cam: c0, start: 0, end: f - 1 }, { cam: c1, start: f, end: project.duration }] : [{ cam: c0, start: 0, end: project.duration }]; } else { const i = S.findIndex(x => f > x.start && f <= x.end); if (i >= 0) { const cur = S[i], idx = cams.findIndex(c => c.id === cur.cam), nx = cams[(idx + 1) % cams.length].id; S.splice(i + 1, 0, { cam: nx, start: f, end: cur.end }); cur.end = f - 1; } } commit(); rerender(); }
       if (a === 'even') { const n = cams.length, D = project.duration + 1; project.shots = cams.map((c, i) => ({ cam: c.id, start: Math.round(i * D / n), end: Math.round((i + 1) * D / n) - 1, name: c.name })); commit(); rerender(); }
       if (a === 'clear') { project.shots = []; commit(); rerender(); }
@@ -5231,7 +5242,7 @@ function updateShotHud(f) {
   shotHud.style.display = 'block'; shotHud.innerHTML = `<span style="color:${camColor(S[i].cam)}">■</span> PLANO ${i + 1}/${S.length} · ${esc(I.name)} · ${I.focal.toFixed(0)} mm <span style="color:#9aa0a6;font-weight:500">· ${left.toFixed(1)} s</span>`;
   if (pipRect) shotHud.style.right = '330px'; else shotHud.style.right = '12px';
 }
-function seqTick(f) { if (seqLoop && playing && (f > seqLoop.b || f < seqLoop.a)) setFrame(seqLoop.a); updateShotHud(f); }
+function seqTick(f) { cineTick(f); if (seqLoop && playing && (f > seqLoop.b || f < seqLoop.a)) setFrame(seqLoop.a); updateShotHud(f); }
 addEventListener('keydown', e => {
   if (e.target.matches && e.target.matches('input,textarea,select')) return; const S = project.shots;
   if (e.key === 'Escape') seqLoop = null;
@@ -5239,6 +5250,40 @@ addEventListener('keydown', e => {
 });
 
 tlc.addEventListener('pointerdown', () => { seqLoop = null; }, true);
+/* ---------- ASSISTIR FILME: tela cheia, todos os planos em sequência ---------- */
+let cinema = false, _cinePrev = null;
+const cineBar = document.createElement('div'); cineBar.id = 'cineBar';
+cineBar.innerHTML = `<div class="row" style="margin-bottom:10px"><button id="cinePlay">❚❚</button><span id="cineTime" style="font-variant-numeric:tabular-nums;min-width:120px">00:00 / 00:00</span><span id="cineShot" style="flex:1;color:#cfd3d8"></span><label style="display:flex;gap:6px;align-items:center;color:#cfd3d8"><input type="checkbox" id="cineLoop" checked> repetir</label><button id="cineExit">✕ Sair (Esc)</button></div><div id="cineSegs"></div>`;
+$('#vpwrap').appendChild(cineBar);
+function cineSegs() {
+  const S = project.shots && project.shots.length ? project.shots : [{ cam: project.activeCamera, start: 0, end: project.duration, name: (getObj(project.activeCamera) || {}).name || 'Câmera' }], D = project.duration + 1;
+  $('#cineSegs').innerHTML = S.map((s, i) => `<div class="sg" data-f="${s.start}" style="flex:${s.end - s.start + 1}" title="${esc(s.name || '')}"><i style="background:${camColor(s.cam)}"></i>&nbsp;${i + 1} · ${esc(s.name || (getObj(s.cam) || {}).name || '')}</div>`).join('') + `<div id="cineHead"></div>`;
+}
+const mmss = (f) => { const s = f / project.fps; return String(Math.floor(s / 60)).padStart(2, '0') + ':' + (s % 60).toFixed(1).padStart(4, '0'); };
+function cineTick(f) {
+  if (!cinema) return; const D = project.duration + 1, segs = $('#cineSegs');
+  $('#cineHead').style.left = (f / D * segs.clientWidth) + 'px'; $('#cineTime').textContent = `${mmss(f)} / ${mmss(D)}`; $('#cinePlay').textContent = playing ? '❚❚' : '▶';
+  const S = project.shots || [], i = S.findIndex(s => f >= s.start && f <= s.end); $('#cineShot').textContent = i >= 0 ? `Plano ${i + 1}/${S.length} · ${S[i].name || getObj(S[i].cam).name}` : '';
+  if (!playing && f >= project.duration && $('#cineLoop').checked) { setFrame(0); togglePlay(true); }
+}
+function openCinema() {
+  const cams = project.objects.filter(o => o.type === 'camera'); if (!cams.length) return toast('Adicione uma câmera primeiro');
+  _cinePrev = { view: viewPick, loop, sel, frame: curFrame }; select(null); seqLoop = null;
+  cinema = true; document.body.classList.add('cinema'); setView('cam'); cineSegs(); loop = $('#cineLoop').checked;
+  setFrame(0); togglePlay(true);
+  try { if (document.documentElement.requestFullscreen && !document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => { }); } catch (e) { }
+}
+function closeCinema() {
+  if (!cinema) return; cinema = false; document.body.classList.remove('cinema'); togglePlay(false);
+  if (_cinePrev) { loop = _cinePrev.loop; setView(_cinePrev.view === 'free' ? 'free' : _cinePrev.view); }
+  try { if (document.fullscreenElement) document.exitFullscreen(); } catch (e) { }
+}
+$('#bWatch').onclick = openCinema;
+$('#cineExit').onclick = closeCinema; $('#cinePlay').onclick = () => togglePlay();
+$('#cineLoop').onchange = e => { loop = e.target.checked; };
+$('#cineSegs').addEventListener('pointerdown', e => { const r = $('#cineSegs').getBoundingClientRect(); setFrame(clamp(Math.round((e.clientX - r.left) / r.width * (project.duration + 1)), 0, project.duration)); });
+addEventListener('keydown', e => { if (!cinema) return; if (e.key === 'Escape') { closeCinema(); e.preventDefault(); } if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { const S = project.shots || []; if (!S.length) return; const i = S.findIndex(s => curFrame >= s.start && curFrame <= s.end), j = clamp(i + (e.key === 'ArrowRight' ? 1 : -1), 0, S.length - 1); setFrame(S[j].start); e.preventDefault(); e.stopPropagation(); } }, true);
+document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && cinema) { /* continua em modo cinema dentro da janela */ } });
 
 /* ============================================================
    EXEMPLO: COMERCIAL ESPORTIVO 30 s (24 fps, multicâmera)

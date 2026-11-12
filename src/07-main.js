@@ -52,9 +52,9 @@ function renderViewport(dt) {
   octx.setTransform(d, 0, 0, d, 0, 0); octx.clearRect(0, 0, w, h);
   if (camView) {
     const r = viewRect(), y0 = h - r.y - r.h;
-    drawGuides(octx, r, y0);
+    if (!cinema) drawGuides(octx, r, y0);
     const co = getObj(viewCamId());
-    if (co) { const focal = pilot.on && pilot.id === co.id ? pilot.s.focal : getVal(co, 'focal', curFrame); octx.font = '11px JetBrains Mono, monospace'; octx.fillStyle = 'rgba(255,255,255,.85)'; const cdx = camDescription(co, curFrame), tx = Math.max(r.x + 10, 64); octx.fillText(`${co.name} · ${cdx.lens} · ${project.aspect}`, tx, y0 + 18); octx.fillStyle = 'rgba(255,255,255,.6)'; octx.fillText(`${cdx.body} · ${cdx.dof}`, tx, y0 + 32); octx.fillStyle = 'rgba(255,255,255,.85)'; octx.textAlign = 'right'; octx.fillText(timecode(curFrame) + `  f${curFrame}`, r.x + r.w - 10, y0 + 18); octx.textAlign = 'left'; }
+    if (co && !cinema) { const focal = pilot.on && pilot.id === co.id ? pilot.s.focal : getVal(co, 'focal', curFrame); octx.font = '11px JetBrains Mono, monospace'; octx.fillStyle = 'rgba(255,255,255,.85)'; const cdx = camDescription(co, curFrame), tx = Math.max(r.x + 10, 64); octx.fillText(`${co.name} · ${cdx.lens} · ${project.aspect}`, tx, y0 + 18); octx.fillStyle = 'rgba(255,255,255,.6)'; octx.fillText(`${cdx.body} · ${cdx.dof}`, tx, y0 + 32); octx.fillStyle = 'rgba(255,255,255,.85)'; octx.textAlign = 'right'; octx.fillText(timecode(curFrame) + `  f${curFrame}`, r.x + r.w - 10, y0 + 18); octx.textAlign = 'left'; }
   }
   if (pilot.rec) { octx.fillStyle = '#e8584f'; octx.beginPath(); octx.arc(w - 22, h - 22, 7, 0, 7); octx.fill(); octx.font = '600 12px Inter'; octx.textAlign = 'right'; octx.fillText('REC', w - 34, h - 18); octx.textAlign = 'left'; }
   const info = [];

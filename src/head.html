@@ -37,6 +37,16 @@ input[type=color]{padding:0 2px;height:26px;width:42px;cursor:pointer}
 input[type=checkbox]{accent-color:#e9e9ec}
 input[type=range]{accent-color:#e9e9ec;padding:0;border:0;background:transparent}
 .mono{font-family:var(--mono)}
+body.cinema #vpwrap{position:fixed;inset:0;z-index:80;background:#000}
+body.cinema #rail,body.cinema #vptools,body.cinema #viewBar,body.cinema #lensBar,body.cinema #axesWrap,body.cinema #pip,body.cinema #vpinfo,body.cinema .lbl,body.cinema #labels{display:none!important}
+#cineBar{position:absolute;left:0;right:0;bottom:0;padding:14px 22px 18px;background:linear-gradient(transparent,rgba(0,0,0,.85));display:none;z-index:90;font:500 12px Inter,sans-serif;color:#e8eaed}
+body.cinema #cineBar{display:block}
+#cineBar .row{display:flex;align-items:center;gap:12px}
+#cineBar button{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:#fff;border-radius:8px;padding:6px 12px;font:600 12px Inter;cursor:pointer}
+#cineSegs{position:relative;flex:1;height:30px;cursor:pointer;display:flex;gap:2px}
+#cineSegs .sg{position:relative;height:100%;border-radius:4px;overflow:hidden;background:rgba(255,255,255,.08);font:600 10.5px Inter;color:rgba(255,255,255,.85);padding:7px 6px 0;white-space:nowrap;text-overflow:ellipsis;box-sizing:border-box;min-width:0}
+#cineSegs .sg i{position:absolute;left:0;top:0;bottom:0;width:3px}
+#cineHead{position:absolute;top:-4px;bottom:-4px;width:2px;background:#fff;pointer-events:none;box-shadow:0 0 6px #fff}
 #app{display:grid;grid-template-rows:50px 1fr 4px var(--tl-h);height:100vh}
 /* topo */
 #top{display:flex;align-items:center;gap:6px;padding:0 12px;background:var(--bg1);border-bottom:1px solid var(--line)}
@@ -247,6 +257,7 @@ kbd{font-family:var(--mono);background:var(--bg3);border:1px solid var(--line2);
     <select id="selAspect" title="Proporção da câmera">
       <option value="16:9">16:9</option><option value="9:16">9:16</option><option value="1:1">1:1</option><option value="4:5">4:5</option><option value="2.39:1">2.39:1</option><option value="4:3">4:3</option>
     </select>
+    <button id="bWatch" title="Assistir o filme inteiro: todos os planos em sequência, em tela cheia">▶ Assistir filme</button>
     <button id="bExport" class="pri" title="Exportar vídeo, imagem, GLB, dados">⤓ Exportar vídeo</button>
     <button class="icon" id="bShot" title="Capturar frame (PNG)">📷</button>
     <input type="file" id="fileIn" accept=".json,application/json">

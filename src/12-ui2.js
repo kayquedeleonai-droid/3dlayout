@@ -203,7 +203,7 @@ $('#outliner').addEventListener('dblclick', e => { const r = e.target.closest('.
 /* ---------- vista do viewport / PiP ---------- */
 function renderViewSel() {
   const cams = project.objects.filter(o => o.type === 'camera');
-  const opts = [['free', '🎬 Vista do diretor']].concat(project.shots && project.shots.length ? [['cut', '✂ Edição (storyboard)']] : []).concat(cams.map(c => [c.id, '🎥 ' + c.name]));
+  const opts = [['free', '🎬 Vista do diretor']].concat(project.shots && project.shots.length ? [['cut', '🎞 Filme completo (todos os planos)']] : []).concat(cams.map(c => [c.id, '🎥 ' + c.name]));
   const vs = $('#viewSel'); vs.innerHTML = opts.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join(''); vs.value = viewPick; if (vs.value !== viewPick) { vs.value = 'free'; }
   const ps = $('#pipSel'), pv = ps.value || 'auto'; ps.innerHTML = `<option value="auto">Auto · plano atual</option>` + cams.map(c => `<option value="${c.id}">🎥 ${esc(c.name)}</option>`).join(''); ps.value = cams.find(c => c.id === pv) ? pv : 'auto';
 }
