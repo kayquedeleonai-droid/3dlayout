@@ -111,7 +111,10 @@ function groundAt(x, z, prevH) {
     const S = R.S; let bi = -1, bd = 1e18;
     for (let i = 0; i < S.length; i += 4) { const dx = x - S[i].x, dz = z - S[i].z, dd = dx * dx + dz * dz; if (dd < bd) { bd = dd; bi = i; } }
     for (let i = Math.max(0, bi - 4); i <= Math.min(S.length - 1, bi + 4); i++) { const dx = x - S[i].x, dz = z - S[i].z, dd = dx * dx + dz * dz; if (dd < bd) { bd = dd; bi = i; } }
-    const s = S[bi], lat = Math.abs((x - s.x) * s.rx + (z - s.z) * s.rz);
+    // interpola entre amostras vizinhas (altura contínua, sem degraus)
+    const s0 = S[bi]; let s = s0;
+    for (const j of [bi + 1, bi - 1]) { const n = S[j]; if (!n) continue; const ex = n.x - s0.x, ez = n.z - s0.z, L2 = ex * ex + ez * ez; if (L2 < 1e-9) continue; const u = ((x - s0.x) * ex + (z - s0.z) * ez) / L2; if (u >= 0 && u <= 1) { s = { x: s0.x + ex * u, z: s0.z + ez * u, y: s0.y + (n.y - s0.y) * u, rx: s0.rx, rz: s0.rz }; break; } }
+    const lat = Math.abs((x - s.x) * s.rx + (z - s.z) * s.rz);
     const reach = R.E + Math.abs(s.y) * 1.6 + 0.6; if (lat > reach) continue;
     let h;
     if (lat <= R.E) h = s.y; else if (s.y > R.bridgeH) continue; else h = lerp(s.y, 0, (lat - R.E) / Math.max(0.01, reach - R.E));

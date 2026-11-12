@@ -48,3 +48,26 @@ Lata 350 ml 0,122 × Ø0,066 · garrafa 0,31 m · smartphone 0,16 × 0,08 · con
 - **Régua 📏 (tecla M):** clique em dois pontos; mostra distância total, horizontal e vertical.
 - O inspetor mostra as dimensões do objeto selecionado.
 - Escala (sx/sy/sz) diferente de 1 muda o tamanho real: prefira mudar os parâmetros em metros.
+
+## Equipamentos de filmagem (limites usados na verificação)
+
+| Equipamento | Limites no app | Fonte |
+|---|---|---|
+| Tripé + cabeça fluida | lente 0,15–2,0 m; câmera não se desloca | típico (baby legs/hi-hat a padrão) |
+| Slider 1,2 m | deslocamento ≤ 1,2 m em linha reta, ≤ 1 m/s | típico |
+| Dolly Chapman Super PeeWee IV | lente 0,48–1,53 m; ≤ 3 m/s; bitola 0,62 m | Chapman/Leonard (modo baixo 48 cm, extensor 1,53 m) |
+| Steadicam | lente 0,4–1,9 m; ≤ 4,5 m/s | típico (operador correndo) |
+| Gimbal de mão | lente 0,2–2,1 m; ≤ 6 m/s | típico |
+| Câmera na mão | lente 0,3–1,9 m; ≤ 5 m/s; tremor | típico |
+| Jib 4 m | alcance 0,6–4 m do pivô (1,5 m); lente ≤ 5,5 m | típico |
+| Technocrane SuperTechno 30 | alcance 2,65–9,14 m do poste; lente ≤ 9,2 m; telescópio ≤ 1,83 m/s; base 1,49 × 1,65 m | Panavision / Cinemoves |
+| Russian Arm (U-Crane) | braço 4,3 m; carro ≤ 150 km/h | Bickers / XD Motion |
+| Car mount | carro ≤ 100 km/h | típico — confirmar com o rigger |
+| DJI Inspire 3 | ≤ 94 km/h; sobe/desce 8 m/s; altura ≤ 120 m | DJI |
+| Drone FPV de cinema | ≤ ~120 km/h; altura ≤ 120 m | típico |
+| Cable cam | linha reta, ≤ 10 m/s, lente 2–40 m | típico |
+
+## Velocidade e quilometragem
+
+- Velocidade e odômetro medidos em 3D (inclui rampas da estrada), com 4 sub-amostras por frame.
+- O perfil de velocidade (tempo, km/h) é integrado de forma exata e o objeto é reposicionado na mesma trajetória pelo comprimento de arco. Teste: 0→100 km/h em 4 s → 55,56 m em 4 s e 222,22 m em 10 s (erro < 0,2 km/h).

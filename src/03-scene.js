@@ -187,6 +187,7 @@ function applyFrame(f) {
     if (o.type === 'camera') updateFrustum(r.rig, r.rig.cam.fov, r.rig.cam.aspect, project.activeCamera === o.id, sel === o.id ? camFocus(o, f) : 0);
   }
   if (roadHandles.userData.road) syncRoadHandles();
+  updateGearViz(f); updateSpeedHud(f);
 }
 
 /* ---------- render ---------- */

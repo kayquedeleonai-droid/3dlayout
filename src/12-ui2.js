@@ -156,6 +156,7 @@ function renderAssets() {
     const isCar = subj && ASSETS[subj.type].pilot === 'car';
     h += `<div class="libhint">${subj ? `Enquadra <b>${esc(subj.name)}</b> com distância calculada pela lente, sensor e tamanho real. Movimentos começam no frame ${curFrame}. Depois troque corpo/kit de lentes no inspetor.` : 'Adicione um personagem ou objeto para os presets enquadrarem.'}</div>`;
     for (const [g, glb] of CAM_GROUPS) h += `<div class="acat">${glb}</div><div class="agrid">` + Object.entries(CAM_PRESETS).filter(([, a]) => (a.grp || 'comp') === g && m(a.lb)).map(([k, a]) => { if (thumbR && !a.mount) queueThumb('cp:' + k, camPresetThumb(k)); return card(`data-cp="${k}"`, thumbR && !a.mount ? 'cp:' + k : null, a.ic, a.lb, a.free ? 'da vista atual' : `${a.lens}mm${a.move || a.custom ? ' · ' + (a.dur || 4) + ' s' : ''}`, a.mount ? !isCar : (!a.free && !subj)); }).join('') + '</div>';
+    h += gearLibraryHTML(card, m, subj, isCar);
   }
   $('#assetList').innerHTML = h;
   $('#assetCount').textContent = Object.keys(ASSETS).length + Object.keys(CAR_DB).length + ' assets';
@@ -169,6 +170,7 @@ $('#assetList').addEventListener('click', e => {
   else if (b.dataset.car) { const k = b.dataset.car; addObject('realcar', { params: Object.assign(carDefaults(k), { modelName: CAR_DB[k].name }), name: CAR_DB[k].name }); }
   else if (b.dataset.act && so) { addClip(so, b.dataset.act); }
   else if (b.dataset.mv && so) { applyMovePreset(so, b.dataset.mv); }
+  else if (b.dataset.gear) { const subj = so && so.type !== 'camera' ? so : project.objects.find(o => ASSETS[o.type].pilot && o.type !== 'camera'); createGearCamera(b.dataset.gear, subj); }
   else if (b.dataset.cp) { const P2 = CAM_PRESETS[b.dataset.cp]; const subj = so && so.type !== 'camera' ? so : project.objects.find(o => ASSETS[o.type].pilot && o.type !== 'camera'); const c = P2.mount ? createRigCamera(b.dataset.cp, so && ASSETS[so.type].pilot === 'car' ? so : project.objects.find(o => ASSETS[o.type].pilot === 'car')) : createPresetCamera(b.dataset.cp); if (c) setView(c.id); }
   renderAssets();
 });

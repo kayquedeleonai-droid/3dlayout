@@ -20,6 +20,7 @@ WORLD CONVENTIONS
 - Units: meters, seconds, degrees. Y is up, ground is y=0.
 - heading: 0 = facing +Z, 90 = facing +X, 180 = facing -Z.
 - Roads ("road", "street" assets) are centered on x=0 and run along the Z axis; lane width 3.5 m. On a 2-lane road the lane centers are x=-1.75 and x=+1.75. Sidewalks of "street" go from |x|=3.5 to |x|=7.5; buildings start beyond |x|≈8.
+- CAMERA GEAR (real equipment, optional per camera): "gear": one of ${Object.keys(GEAR).filter(k => k !== 'none').map(k => k + ' (' + GEAR[k].lb + (GEAR[k].vMax ? ', ≤' + Math.round(GEAR[k].vMax * 3.6) + ' km/h' : '') + (GEAR[k].hMax ? ', lens ' + GEAR[k].hMin + '-' + GEAR[k].hMax + ' m' : '') + (GEAR[k].reach ? ', reach ' + GEAR[k].reach.join('-') + ' m' : '') + ')').join('; ')}. Keep camera paths inside those limits (speed, lens height, reach). For tracking a car at speed use "russian" (camera car with arm) or "carmount"; never a dolly or steadicam above their speed.
 - WINDING / HILLY ROADS: use type "roadpath" with params.pts = [[x, elevation, z], ...] control points (smooth spline; 30-60 m apart; grades under ~12%), params.lanes, params.closed for loops. To drive a vehicle (or walk a person) along it give that object "follow_road": {"road": "<road id>", "speed_kmh": 80, "lane": 1, "start_s": 0, "reverse": false} instead of a path (lane = 0-based index from the left; on a 2-lane road 1 = right lane) — height and pitch on ramps are automatic. Cameras can then "follow" or "aim" that object.
 - Vehicles move on the road along +Z (or -Z), y=0. Birds/drones/helicopters fly at y>0 and need y in their path.
 - Typical speeds: walk 1.4 m/s, run 4 m/s, car city 40-60 km/h, highway 100-130 km/h, sports car hero shot 80-160 km/h, horse gallop 12 m/s, bird 8-15 m/s. Distance = speed × time.
@@ -192,6 +193,7 @@ function applySpec(spec, mode) {
     if (pts && pts.length > 1) { const S = { px: [], py: [], pz: [] }; for (const p of pts) { S.px.push({ f: p.f, v: p.x }); S.py.push({ f: p.f, v: p.y }); S.pz.push({ f: p.f, v: p.z }); } for (const ch in S) writeSamples(o, ch, S[ch], 'simplify', 0.01); }
     const l0 = clamp(+scam.lens_mm || 35, 6, 600), l1 = clamp(+(scam.lens_end_mm ?? l0) || l0, 6, 600);
     if (Math.abs(l1 - l0) > 0.5) { setKey(o, 'focal', 0, l0); setKey(o, 'focal', project.duration, l1); }
+    if (GEAR[scam.gear] && scam.gear !== 'none') { if (scam.gear === 'russian') { buildRuntime(o); createCameraCar(o); } else { o.gear = { type: scam.gear }; buildRuntime(o); if (GEAR[scam.gear].base) placeGearBase(o, 0); if (GEAR[scam.gear].shake != null && !o.cons.shake) o.cons.shake = GEAR[scam.gear].shake; } }
     if (!firstCam) firstCam = o;
     idMap[scam.id || o.id] = o.id;
   }

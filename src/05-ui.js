@@ -69,7 +69,7 @@ function duplicateObject(id) {
 /* ============================================================
    INSPETOR
    ============================================================ */
-const secState = { xf: true, cam: true, cons: false, par: true, gen: false, car: true, ref: false, sens: false, model: true, road: true };
+const secState = { xf: true, cam: true, cons: false, par: true, gen: false, car: true, ref: false, sens: false, model: true, road: true, gear: true, speed: true };
 function sec(id, title, body, extra = '') { return `<div class="sec ${secState[id] ? '' : 'closed'}" data-sec="${id}"><div class="sech"><span class="car">${secState[id] ? '▼' : '▶'}</span>${title}<span class="grow"></span>${extra}</div><div class="secb">${body}</div></div>`; }
 function chRow(o, ch) {
   const d = CH[ch], g = GROUPS[d.g];
@@ -127,6 +127,8 @@ function renderInspector() {
     <div class="hint"><b>Mirar</b>: aponta sempre para o objeto. <b>Seguir</b>: posição relativa ao alvo, sem girar junto (travelling/perseguição). <b>Montar</b>: rig preso ao veículo — acompanha posição e giro (capô, porta, para-choque). <b>Tremor</b>: câmera na mão.</div>`);
   if (o.type === 'realcar') h += sec('car', 'Ficha técnica do carro', carSection(o));
   if (o.type === 'roadpath') h += sec('road', 'Traçado da estrada', roadSectionHTML(o));
+  if (isCam) h += sec('gear', 'Equipamento de filmagem' + (o.gear && o.gear.type !== 'none' ? ' <span style="color:var(--acc)">•</span>' : ''), gearSectionHTML(o));
+  if (!isCam && ASSETS[o.type].pilot) h += sec('speed', 'Velocidade e quilometragem', speedSectionHTML(o));
   if (o.type !== 'camera') h += sec('ref', 'Model sheet / referência' + (o.refs && Object.keys(o.refs).length ? ' <span style="color:var(--acc)">•</span>' : ''), refsSection(o));
   if (d.params.length) h += sec(isCam ? 'sens' : 'par', isCam ? 'Sensor e óptica (avançado)' : 'Parâmetros procedurais', d.params.map(p => paramField(p, o.params[p.k] ?? p.def)).join(''));
   // gerador
@@ -140,7 +142,7 @@ function renderInspector() {
     <div class="prow wide"><span class="lb">Easing</span><select id="genEase"><option value="inout">Ease in-out</option><option value="in">Ease in</option><option value="out">Ease out</option><option value="linear">Linear</option></select></div>
     <div class="btnrow"><button class="pri" data-act="gen">Gerar a partir do frame ${curFrame}</button></div>
     <div class="hint">Cria keyframes procedurais a partir do estado atual. Depois refine no Graph Editor.</div>`);
-  $('#insp').innerHTML = h; updateRoadHandles();
+  $('#insp').innerHTML = h; updateRoadHandles(); if (!isCam && d.pilot && secState.speed) drawSpeedGraph(o);
   $('#genEase') && ($('#genEase').value = genState.ease);
   refreshInspectorValues(true);
 }

@@ -1796,6 +1796,7 @@ function applyFrame(f) {
     if (o.type === 'camera') updateFrustum(r.rig, r.rig.cam.fov, r.rig.cam.aspect, project.activeCamera === o.id, sel === o.id ? camFocus(o, f) : 0);
   }
   if (roadHandles.userData.road) syncRoadHandles();
+  updateGearViz(f); updateSpeedHud(f);
 }
 
 /* ---------- render ---------- */
@@ -2031,7 +2032,7 @@ function duplicateObject(id) {
 /* ============================================================
    INSPETOR
    ============================================================ */
-const secState = { xf: true, cam: true, cons: false, par: true, gen: false, car: true, ref: false, sens: false, model: true, road: true };
+const secState = { xf: true, cam: true, cons: false, par: true, gen: false, car: true, ref: false, sens: false, model: true, road: true, gear: true, speed: true };
 function sec(id, title, body, extra = '') { return `<div class="sec ${secState[id] ? '' : 'closed'}" data-sec="${id}"><div class="sech"><span class="car">${secState[id] ? '▼' : '▶'}</span>${title}<span class="grow"></span>${extra}</div><div class="secb">${body}</div></div>`; }
 function chRow(o, ch) {
   const d = CH[ch], g = GROUPS[d.g];
@@ -2089,6 +2090,8 @@ function renderInspector() {
     <div class="hint"><b>Mirar</b>: aponta sempre para o objeto. <b>Seguir</b>: posição relativa ao alvo, sem girar junto (travelling/perseguição). <b>Montar</b>: rig preso ao veículo — acompanha posição e giro (capô, porta, para-choque). <b>Tremor</b>: câmera na mão.</div>`);
   if (o.type === 'realcar') h += sec('car', 'Ficha técnica do carro', carSection(o));
   if (o.type === 'roadpath') h += sec('road', 'Traçado da estrada', roadSectionHTML(o));
+  if (isCam) h += sec('gear', 'Equipamento de filmagem' + (o.gear && o.gear.type !== 'none' ? ' <span style="color:var(--acc)">•</span>' : ''), gearSectionHTML(o));
+  if (!isCam && ASSETS[o.type].pilot) h += sec('speed', 'Velocidade e quilometragem', speedSectionHTML(o));
   if (o.type !== 'camera') h += sec('ref', 'Model sheet / referência' + (o.refs && Object.keys(o.refs).length ? ' <span style="color:var(--acc)">•</span>' : ''), refsSection(o));
   if (d.params.length) h += sec(isCam ? 'sens' : 'par', isCam ? 'Sensor e óptica (avançado)' : 'Parâmetros procedurais', d.params.map(p => paramField(p, o.params[p.k] ?? p.def)).join(''));
   // gerador
@@ -2102,7 +2105,7 @@ function renderInspector() {
     <div class="prow wide"><span class="lb">Easing</span><select id="genEase"><option value="inout">Ease in-out</option><option value="in">Ease in</option><option value="out">Ease out</option><option value="linear">Linear</option></select></div>
     <div class="btnrow"><button class="pri" data-act="gen">Gerar a partir do frame ${curFrame}</button></div>
     <div class="hint">Cria keyframes procedurais a partir do estado atual. Depois refine no Graph Editor.</div>`);
-  $('#insp').innerHTML = h; updateRoadHandles();
+  $('#insp').innerHTML = h; updateRoadHandles(); if (!isCam && d.pilot && secState.speed) drawSpeedGraph(o);
   $('#genEase') && ($('#genEase').value = genState.ease);
   refreshInspectorValues(true);
 }
@@ -2794,7 +2797,7 @@ function sanitizeProject(d) {
   p.objects = (d.objects || []).filter(o => ASSETS[o.type]).map(o => {
     const base = Object.assign({ px: 0, py: 0, pz: 0, rx: 0, ry: 0, rz: 0, sx: 1, sy: 1, sz: 1 }, o.base || {}); if (o.type === 'camera' && base.focal == null) base.focal = 35;
     const tracks = {}; for (const ch in (o.tracks || {})) { const ks = (o.tracks[ch] || []).map(k => Object.assign(mkKey(k.f, k.v), k)); if (ks.length) { sortKeys(ks); autoHandles(ks); tracks[ch] = ks; } }
-    return { id: o.id || uid(), type: o.type, name: o.name || ASSETS[o.type].label, params: Object.assign(defaultParams(o.type), o.params || {}), base, tracks, cons: Object.assign({ aim: null, aimH: 1, follow: null, mount: null, shake: 0, shakeFreq: 1.5 }, o.cons || {}), hidden: !!o.hidden, refs: o.refs || undefined, custom: o.custom || undefined, clips: (o.clips || []).filter(c => PERSON_ACTIONS[c.kind] || QUAD_ACTIONS[c.kind]).map(c => ({ id: c.id || uid('c'), kind: c.kind, start: +c.start, end: +c.end })) };
+    return { id: o.id || uid(), type: o.type, name: o.name || ASSETS[o.type].label, params: Object.assign(defaultParams(o.type), o.params || {}), base, tracks, cons: Object.assign({ aim: null, aimH: 1, follow: null, mount: null, shake: 0, shakeFreq: 1.5 }, o.cons || {}), hidden: !!o.hidden, refs: o.refs || undefined, custom: o.custom || undefined, gear: o.gear || undefined, speedProf: Array.isArray(o.speedProf) ? o.speedProf.filter(p => isFinite(p.t) && isFinite(p.v)) : undefined, clips: (o.clips || []).filter(c => PERSON_ACTIONS[c.kind] || QUAD_ACTIONS[c.kind]).map(c => ({ id: c.id || uid('c'), kind: c.kind, start: +c.start, end: +c.end })) };
   });
   if (p.activeCamera && !p.objects.find(o => o.id === p.activeCamera)) p.activeCamera = null;
   p.shots = (d.shots || []).filter(s => p.objects.find(o => o.id === s.cam)).map(s => ({ cam: s.cam, start: Math.round(+s.start || 0), end: Math.round(+s.end || 0) }));
@@ -3067,7 +3070,7 @@ function demoProject() {
    INICIALIZAÇÃO
    ============================================================ */
 function init() {
-  initRealcarUI(); initThumbs(); initCinemaUI(); initModelUI(); initRoadUI(); initMeasureUI();
+  initRealcarUI(); initThumbs(); initCinemaUI(); initModelUI(); initRoadUI(); initMeasureUI(); initGearUI(); initSpeedUI();
   renderAssets();
   let loaded = false;
   try { const s = localStorage.getItem('layout3d.autosave'); if (s) { const d = JSON.parse(s); if (d && d.objects && d.objects.length) { loadProjectData(d); loaded = true; toast('Sessão anterior restaurada'); } } } catch (e) { }
@@ -3099,6 +3102,7 @@ WORLD CONVENTIONS
 - Units: meters, seconds, degrees. Y is up, ground is y=0.
 - heading: 0 = facing +Z, 90 = facing +X, 180 = facing -Z.
 - Roads ("road", "street" assets) are centered on x=0 and run along the Z axis; lane width 3.5 m. On a 2-lane road the lane centers are x=-1.75 and x=+1.75. Sidewalks of "street" go from |x|=3.5 to |x|=7.5; buildings start beyond |x|≈8.
+- CAMERA GEAR (real equipment, optional per camera): "gear": one of ${Object.keys(GEAR).filter(k => k !== 'none').map(k => k + ' (' + GEAR[k].lb + (GEAR[k].vMax ? ', ≤' + Math.round(GEAR[k].vMax * 3.6) + ' km/h' : '') + (GEAR[k].hMax ? ', lens ' + GEAR[k].hMin + '-' + GEAR[k].hMax + ' m' : '') + (GEAR[k].reach ? ', reach ' + GEAR[k].reach.join('-') + ' m' : '') + ')').join('; ')}. Keep camera paths inside those limits (speed, lens height, reach). For tracking a car at speed use "russian" (camera car with arm) or "carmount"; never a dolly or steadicam above their speed.
 - WINDING / HILLY ROADS: use type "roadpath" with params.pts = [[x, elevation, z], ...] control points (smooth spline; 30-60 m apart; grades under ~12%), params.lanes, params.closed for loops. To drive a vehicle (or walk a person) along it give that object "follow_road": {"road": "<road id>", "speed_kmh": 80, "lane": 1, "start_s": 0, "reverse": false} instead of a path (lane = 0-based index from the left; on a 2-lane road 1 = right lane) — height and pitch on ramps are automatic. Cameras can then "follow" or "aim" that object.
 - Vehicles move on the road along +Z (or -Z), y=0. Birds/drones/helicopters fly at y>0 and need y in their path.
 - Typical speeds: walk 1.4 m/s, run 4 m/s, car city 40-60 km/h, highway 100-130 km/h, sports car hero shot 80-160 km/h, horse gallop 12 m/s, bird 8-15 m/s. Distance = speed × time.
@@ -3271,6 +3275,7 @@ function applySpec(spec, mode) {
     if (pts && pts.length > 1) { const S = { px: [], py: [], pz: [] }; for (const p of pts) { S.px.push({ f: p.f, v: p.x }); S.py.push({ f: p.f, v: p.y }); S.pz.push({ f: p.f, v: p.z }); } for (const ch in S) writeSamples(o, ch, S[ch], 'simplify', 0.01); }
     const l0 = clamp(+scam.lens_mm || 35, 6, 600), l1 = clamp(+(scam.lens_end_mm ?? l0) || l0, 6, 600);
     if (Math.abs(l1 - l0) > 0.5) { setKey(o, 'focal', 0, l0); setKey(o, 'focal', project.duration, l1); }
+    if (GEAR[scam.gear] && scam.gear !== 'none') { if (scam.gear === 'russian') { buildRuntime(o); createCameraCar(o); } else { o.gear = { type: scam.gear }; buildRuntime(o); if (GEAR[scam.gear].base) placeGearBase(o, 0); if (GEAR[scam.gear].shake != null && !o.cons.shake) o.cons.shake = GEAR[scam.gear].shake; } }
     if (!firstCam) firstCam = o;
     idMap[scam.id || o.id] = o.id;
   }
@@ -4116,6 +4121,7 @@ function renderAssets() {
     const isCar = subj && ASSETS[subj.type].pilot === 'car';
     h += `<div class="libhint">${subj ? `Enquadra <b>${esc(subj.name)}</b> com distância calculada pela lente, sensor e tamanho real. Movimentos começam no frame ${curFrame}. Depois troque corpo/kit de lentes no inspetor.` : 'Adicione um personagem ou objeto para os presets enquadrarem.'}</div>`;
     for (const [g, glb] of CAM_GROUPS) h += `<div class="acat">${glb}</div><div class="agrid">` + Object.entries(CAM_PRESETS).filter(([, a]) => (a.grp || 'comp') === g && m(a.lb)).map(([k, a]) => { if (thumbR && !a.mount) queueThumb('cp:' + k, camPresetThumb(k)); return card(`data-cp="${k}"`, thumbR && !a.mount ? 'cp:' + k : null, a.ic, a.lb, a.free ? 'da vista atual' : `${a.lens}mm${a.move || a.custom ? ' · ' + (a.dur || 4) + ' s' : ''}`, a.mount ? !isCar : (!a.free && !subj)); }).join('') + '</div>';
+    h += gearLibraryHTML(card, m, subj, isCar);
   }
   $('#assetList').innerHTML = h;
   $('#assetCount').textContent = Object.keys(ASSETS).length + Object.keys(CAR_DB).length + ' assets';
@@ -4129,6 +4135,7 @@ $('#assetList').addEventListener('click', e => {
   else if (b.dataset.car) { const k = b.dataset.car; addObject('realcar', { params: Object.assign(carDefaults(k), { modelName: CAR_DB[k].name }), name: CAR_DB[k].name }); }
   else if (b.dataset.act && so) { addClip(so, b.dataset.act); }
   else if (b.dataset.mv && so) { applyMovePreset(so, b.dataset.mv); }
+  else if (b.dataset.gear) { const subj = so && so.type !== 'camera' ? so : project.objects.find(o => ASSETS[o.type].pilot && o.type !== 'camera'); createGearCamera(b.dataset.gear, subj); }
   else if (b.dataset.cp) { const P2 = CAM_PRESETS[b.dataset.cp]; const subj = so && so.type !== 'camera' ? so : project.objects.find(o => ASSETS[o.type].pilot && o.type !== 'camera'); const c = P2.mount ? createRigCamera(b.dataset.cp, so && ASSETS[so.type].pilot === 'car' ? so : project.objects.find(o => ASSETS[o.type].pilot === 'car')) : createPresetCamera(b.dataset.cp); if (c) setView(c.id); }
   renderAssets();
 });
@@ -4545,7 +4552,10 @@ function groundAt(x, z, prevH) {
     const S = R.S; let bi = -1, bd = 1e18;
     for (let i = 0; i < S.length; i += 4) { const dx = x - S[i].x, dz = z - S[i].z, dd = dx * dx + dz * dz; if (dd < bd) { bd = dd; bi = i; } }
     for (let i = Math.max(0, bi - 4); i <= Math.min(S.length - 1, bi + 4); i++) { const dx = x - S[i].x, dz = z - S[i].z, dd = dx * dx + dz * dz; if (dd < bd) { bd = dd; bi = i; } }
-    const s = S[bi], lat = Math.abs((x - s.x) * s.rx + (z - s.z) * s.rz);
+    // interpola entre amostras vizinhas (altura contínua, sem degraus)
+    const s0 = S[bi]; let s = s0;
+    for (const j of [bi + 1, bi - 1]) { const n = S[j]; if (!n) continue; const ex = n.x - s0.x, ez = n.z - s0.z, L2 = ex * ex + ez * ez; if (L2 < 1e-9) continue; const u = ((x - s0.x) * ex + (z - s0.z) * ez) / L2; if (u >= 0 && u <= 1) { s = { x: s0.x + ex * u, z: s0.z + ez * u, y: s0.y + (n.y - s0.y) * u, rx: s0.rx, rz: s0.rz }; break; } }
+    const lat = Math.abs((x - s.x) * s.rx + (z - s.z) * s.rz);
     const reach = R.E + Math.abs(s.y) * 1.6 + 0.6; if (lat > reach) continue;
     let h;
     if (lat <= R.E) h = s.y; else if (s.y > R.bridgeH) continue; else h = lerp(s.y, 0, (lat - R.E) / Math.max(0.01, reach - R.E));
@@ -4712,6 +4722,370 @@ function initMeasureUI() {
   $('#tMeasure').onclick = () => setMeasure(!measure.on);
   addEventListener('keydown', e => { if (e.target.matches && e.target.matches('input,textarea,select')) return; if (e.key === 'm' || e.key === 'M') setMeasure(!measure.on); if (e.key === 'Escape' && measure.on) setMeasure(false); });
   (function loop() { if (measure.on) measureLabel(); requestAnimationFrame(loop); })();
+}
+
+/* ============================================================
+   EQUIPAMENTO DE FILMAGEM REAL
+   Cada câmera pode estar num suporte com medidas e limites de fichas técnicas
+   (alcance, altura de lente, velocidade). O app desenha o equipamento em escala
+   e confere a animação inteira contra os limites.
+   o.gear = { type, base: {x, y, z, yaw}?, veh?: id }
+   ============================================================ */
+const GEAR = {
+  none: { lb: 'Livre (sem equipamento)', ic: '🎥', grp: 'Livre' },
+  tripod: { lb: 'Tripé + cabeça fluida', ic: '📷', grp: 'Fixo', hMin: 0.15, hMax: 2.0, still: true, src: 'Tripé padrão ~0,75–2,0 m de lente; baby legs/hi-hat até 0,15 m.' },
+  slider: { lb: 'Slider 1,2 m', ic: '↔️', grp: 'Fixo', hMin: 0.15, hMax: 2.0, travel: 1.2, vMax: 1.0, src: 'Slider de 1,2 m sobre tripés; deslocamento só em linha reta (típico).' },
+  dolly: { lb: 'Dolly Chapman Super PeeWee IV (trilho)', ic: '🛤️', grp: 'Chão', hMin: 0.48, hMax: 1.53, vMax: 3.0, gauge: 0.62, src: 'Super PeeWee IV: lente 0,48–1,53 m (modo baixo a extensor), braço 0,84 m, 0,51 × 1,07 m, bitola de trilho 24,5". Velocidade empurrada por maquinista ~3 m/s (típico).' },
+  steadicam: { lb: 'Steadicam (operador)', ic: '🚶', grp: 'Chão', hMin: 0.4, hMax: 1.9, vMax: 4.5, op: true, shake: 0.25, src: 'Lente ~0,4 m (low mode) a 1,9 m. Operador andando/correndo: até ~4,5 m/s (típico); mais rápido, use veículo.' },
+  gimbal: { lb: 'Gimbal de mão (Ronin 2 / MoVI)', ic: '🤲', grp: 'Chão', hMin: 0.2, hMax: 2.1, vMax: 6, op: true, shake: 0.15, src: 'Gimbal de 3 eixos na mão: ~0,2–2,1 m; corrida até ~6 m/s (típico).' },
+  handheld: { lb: 'Câmera na mão / ombro', ic: '✋', grp: 'Chão', hMin: 0.3, hMax: 1.9, vMax: 5, op: true, shake: 0.7, src: 'Ombro ~1,5–1,7 m; baixo ~0,3 m. Tremor natural de operador.' },
+  jib: { lb: 'Grua jib 4 m (base fixa)', ic: '🏗️', grp: 'Gruas', base: true, pivotH: 1.5, reach: [0.6, 4.0], hMin: 0, hMax: 5.5, vMax: 2.5, src: 'Jib manual de 4 m sobre tripé/pedestal, pivô ~1,5 m, lente até ~5,5 m (típico).' },
+  techno: { lb: 'Technocrane SuperTechno 30', ic: '🏗️', grp: 'Gruas', base: true, pivotH: 2.36, reach: [2.65, 9.14], hMin: 0, hMax: 9.2, tele: 1.83, vMax: 4, rear: 2.4, baseW: 1.49, baseL: 1.65, src: 'SuperTechno 30: alcance do poste 2,65–9,14 m (telescópico 6,9 m), lente até 9,2 m, telescópio até 1,83 m/s, base 1,49 × 1,65 m, poste 2,15–2,56 m, traseira 2,4 m.' },
+  russian: { lb: 'Russian Arm (U-Crane) em Mercedes', ic: '🚙', grp: 'Veículo', car: true, arm: 4.3, carVmax: 150, src: 'U-Crane / Russian Arm: braço padrão 4,3 m (opcional até 6,5 m), tilt ±45°, pan 360°; operação até 150 km/h. Carro: Mercedes GLE63s (4,94 × 2,01 × 1,78 m).' },
+  carmount: { lb: 'Car mount (ventosa / hostess tray)', ic: '🧲', grp: 'Veículo', car: true, carVmax: 100, src: 'Rig preso à carroceria (ventosas, hostess tray, hood mount). Limite típico ~100 km/h — confirme com o rigger.' },
+  drone: { lb: 'Drone DJI Inspire 3', ic: '🚁', grp: 'Aéreo', air: true, hMin: 0.5, hMax: 120, vMax: 26.1, vUp: 8, vDown: 8, src: 'Inspire 3: 94 km/h na horizontal, sobe/desce 8 m/s, 0,71 × 0,50 m. Altura limitada a 120 m (limite usual de regulamentação).' },
+  fpv: { lb: 'Drone FPV de cinema', ic: '🛸', grp: 'Aéreo', air: true, hMin: 0.2, hMax: 120, vMax: 33, vUp: 15, vDown: 15, src: 'FPV de cinema (câmera cine leve): até ~120 km/h, manobras rápidas (típico). Cinewhoop: bem mais lento (~15 m/s).' },
+  cable: { lb: 'Cable cam', ic: '🚡', grp: 'Aéreo', hMin: 2, hMax: 40, vMax: 10, line: true, src: 'Câmera em cabo entre duas torres: trajeto em linha reta, até ~10 m/s (típico).' },
+};
+const GEAR_GROUPS = ['Livre', 'Fixo', 'Chão', 'Gruas', 'Veículo', 'Aéreo'];
+const gearViz = new THREE.Group(); scene.add(gearViz); sceneHelpers.push(gearViz);
+const _gm = { metal: new THREE.MeshStandardMaterial({ color: '#8f949b', roughness: .45, metalness: .6 }), dark: new THREE.MeshStandardMaterial({ color: '#2b2d31', roughness: .7 }), yel: new THREE.MeshStandardMaterial({ color: '#d9a441', roughness: .6 }), bad: new THREE.MeshStandardMaterial({ color: '#e5484d', roughness: .6, emissive: '#5a0d10' }), wood: new THREE.MeshStandardMaterial({ color: '#7a5a3c', roughness: .9 }) };
+const _gv = new THREE.Vector3(), _gv2 = new THREE.Vector3();
+function camWorld(o, f, out = new THREE.Vector3()) { return worldPos(o, f, out); }
+function gearPivot(o, f, out = new THREE.Vector3()) {
+  const G = GEAR[o.gear && o.gear.type]; if (!G) return null;
+  if (G.base && o.gear.base) return out.set(o.gear.base.x, (o.gear.base.y || 0) + G.pivotH, o.gear.base.z);
+  if (o.gear.type === 'russian') { const v = getObj(o.gear.veh || o.cons.mount); if (!v) return null; const r = rt.get(v.id); worldPos(v, f, out); const h = r && r.size ? r.size.y : 1.78; out.y += h + 0.35; return out; }
+  return null;
+}
+function groundBelow(p) { const g = typeof groundAt === 'function' && _roadRelief ? groundAt(p.x, p.z) : null; return g == null ? 0 : g; }
+/* ---------- verificação dos limites ao longo da timeline ---------- */
+function gearCheck(o, type) {
+  const G = GEAR[type || (o.gear && o.gear.type)]; if (!G || !G.lb || type === 'none') return { ok: true, items: [], stats: {} };
+  const fps = project.fps, N = project.duration, P = [], items = [];
+  const saved = o.gear; if (type && (!o.gear || o.gear.type !== type)) o.gear = Object.assign({}, o.gear || {}, { type });
+  for (let f = 0; f <= N; f++) P.push(camWorld(o, f, new THREE.Vector3()));
+  let hMin = 1e9, hMax = -1e9, vMax = 0, vUpMax = 0, vDnMax = 0, rMin = 1e9, rMax = 0, teleMax = 0, carV = 0, prevR = null, moved = 0;
+  const bad = (k, f) => { const it = items.find(i => i.k === k); if (it) { it.f1 = f; it.n++; } else items.push({ k, f0: f, f1: f, n: 1 }); };
+  const veh = G.car ? getObj((o.gear && o.gear.veh) || o.cons.mount) : null;
+  for (let f = 0; f <= N; f++) {
+    const p = P[f], h = p.y - groundBelow(p); hMin = Math.min(hMin, h); hMax = Math.max(hMax, h);
+    if (f > 0) { const d = p.distanceTo(P[f - 1]) * fps, vy = (p.y - P[f - 1].y) * fps; vMax = Math.max(vMax, d); vUpMax = Math.max(vUpMax, vy); vDnMax = Math.max(vDnMax, -vy); moved += p.distanceTo(P[f - 1]);
+      if (G.vMax && d > G.vMax * 1.02) bad('v', f); if (G.vUp && vy > G.vUp * 1.02) bad('vup', f); if (G.vDown && -vy > G.vDown * 1.02) bad('vdn', f); }
+    if (G.hMin != null && h < G.hMin - 0.01) bad('hmin', f); if (G.hMax != null && h > G.hMax + 0.01) bad('hmax', f);
+    const pv = gearPivot(o, f, _gv);
+    if (pv && (G.reach || G.arm)) { const r = p.distanceTo(pv); rMin = Math.min(rMin, r); rMax = Math.max(rMax, r); const [a, b] = G.reach || [0, G.arm]; if (r < a - 0.05) bad('rmin', f); if (r > b + 0.05) bad('rmax', f); if (G.tele && prevR != null) { const tv = Math.abs(r - prevR) * fps; teleMax = Math.max(teleMax, tv); if (tv > G.tele * 1.02) bad('tele', f); } prevR = r; }
+    if (veh && f > 0) { const a = worldPos(veh, f, _gv2).clone(), b = worldPos(veh, f - 1, new THREE.Vector3()); const kmh = a.distanceTo(b) * fps * 3.6; carV = Math.max(carV, kmh); if (kmh > G.carVmax * 1.02) bad('car', f); }
+  }
+  if (G.still && moved > 0.05) items.push({ k: 'still', f0: 0, f1: N, n: 1 });
+  if (G.travel) { let span = 0; for (const p of P) span = Math.max(span, p.distanceTo(P[0])); if (span > G.travel + 0.02) items.push({ k: 'travel', f0: 0, f1: N, n: 1, v: span }); }
+  if (G.car && !veh) items.push({ k: 'nocar', f0: 0, f1: N, n: 1 });
+  if (G.base && !(o.gear && o.gear.base)) items.push({ k: 'nobase', f0: 0, f1: N, n: 1 });
+  o.gear = saved;
+  return { ok: !items.length, items, stats: { hMin, hMax, vMax, vUpMax, vDnMax, rMin: rMin < 1e9 ? rMin : null, rMax: rMax || null, teleMax, carV, moved } };
+}
+const GEAR_MSG = {
+  v: (G, s) => `velocidade da câmera chega a ${(s.vMax * 3.6).toFixed(0)} km/h (${s.vMax.toFixed(1)} m/s) — limite ${(G.vMax * 3.6).toFixed(0)} km/h`,
+  vup: (G, s) => `sobe a ${s.vUpMax.toFixed(1)} m/s — limite ${G.vUp} m/s`, vdn: (G, s) => `desce a ${s.vDnMax.toFixed(1)} m/s — limite ${G.vDown} m/s`,
+  hmin: (G, s) => `lente a ${s.hMin.toFixed(2)} m do chão — mínimo ${G.hMin} m`, hmax: (G, s) => `lente a ${s.hMax.toFixed(2)} m do chão — máximo ${G.hMax} m`,
+  rmin: (G, s) => `câmera a ${s.rMin.toFixed(2)} m do pivô — alcance mínimo ${(G.reach || [0])[0]} m`, rmax: (G, s) => `câmera a ${s.rMax.toFixed(2)} m do pivô — alcance máximo ${(G.reach || [0, G.arm])[1]} m`,
+  tele: (G, s) => `braço telescópico a ${s.teleMax.toFixed(2)} m/s — limite ${G.tele} m/s`, car: (G, s) => `veículo a ${s.carV.toFixed(0)} km/h — limite ${G.carVmax} km/h`,
+  still: () => 'a câmera se desloca, mas o tripé é fixo (só pan/tilt/zoom)', travel: (G, s, it) => `deslocamento de ${it.v.toFixed(2)} m — o slider tem ${G.travel} m`,
+  nocar: () => 'precisa estar montada em um veículo (Restrições → Montar)', nobase: () => 'base da grua não posicionada',
+};
+function gearCheckHTML(o) {
+  const G = GEAR[o.gear && o.gear.type]; if (!G || o.gear.type === 'none') return '';
+  const R = gearCheck(o), s = R.stats, fps = project.fps, t = f => (f / fps).toFixed(1) + 's';
+  let h = `<div class="hint" style="margin:6px 0 2px">Ao longo da cena: altura ${s.hMin.toFixed(2)}–${s.hMax.toFixed(2)} m · vel. máx. ${(s.vMax * 3.6).toFixed(1)} km/h${s.rMax ? ` · alcance ${s.rMin.toFixed(2)}–${s.rMax.toFixed(2)} m` : ''}${s.carV ? ` · carro até ${s.carV.toFixed(0)} km/h` : ''}</div>`;
+  if (R.ok) h += `<div class="hint" style="color:#6cc86a;margin:4px 0">✓ Movimento possível com este equipamento.</div>`;
+  else h += R.items.map(it => `<div class="hint" style="color:#ff8a80;margin:3px 0">⚠ ${GEAR_MSG[it.k](G, s, it)}${it.k !== 'still' && it.k !== 'nocar' && it.k !== 'nobase' && it.k !== 'travel' ? ` <span style="color:var(--tx3)">(${t(it.f0)}–${t(it.f1)})</span>` : ''}</div>`).join('');
+  return h;
+}
+function gearSectionHTML(o) {
+  const cur = (o.gear && o.gear.type) || 'none', G = GEAR[cur];
+  let sel2 = '<select id="gearSel">'; for (const g of GEAR_GROUPS) { sel2 += `<optgroup label="${g}">` + Object.entries(GEAR).filter(([, v]) => v.grp === g).map(([k, v]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${v.ic} ${v.lb}</option>`).join('') + '</optgroup>'; } sel2 += '</select>';
+  let h = `<div class="prow wide"><span class="lb">Equipamento</span>${sel2}</div>`;
+  if (G.src) h += `<div class="hint" style="margin-top:2px">📋 ${G.src}</div>`;
+  if (G.base) h += `<div class="btnrow"><button data-gear-act="base">📍 Base atrás da câmera (frame atual)</button></div>`;
+  if (G.car) h += `<div class="btnrow"><button data-gear-act="car">${G.car && cur === 'russian' ? '🚙 Criar carro de câmera com Russian Arm' : '🔗 Montar no carro selecionado'}</button></div>`;
+  h += gearCheckHTML(o);
+  h += `<div class="btnrow"><button data-gear-act="suggest">✨ Sugerir equipamento para este movimento</button></div>`;
+  return h;
+}
+function placeGearBase(o, f = curFrame) {
+  const G = GEAR[o.gear.type], r = rt.get(o.id); if (!G || !G.base || !r) return;
+  const p = camWorld(o, f, new THREE.Vector3()), fw = new THREE.Vector3(0, 0, -1).applyQuaternion(r.g.quaternion); fw.y = 0; if (fw.lengthSq() < 1e-6) fw.set(0, 0, -1); fw.normalize();
+  const want = clamp((G.reach[0] + G.reach[1]) / 2, G.reach[0] + 0.3, G.reach[1] - 0.3), dy = p.y - G.pivotH, hd = Math.sqrt(Math.max(0.25, want * want - dy * dy));
+  const b = p.clone().addScaledVector(fw, -hd); o.gear.base = { x: +b.x.toFixed(3), y: +groundBelow(b).toFixed(3), z: +b.z.toFixed(3), yaw: Math.atan2(fw.x, fw.z) };
+}
+function setGear(o, type) {
+  const G = GEAR[type]; o.gear = Object.assign({}, o.gear || {}, { type });
+  if (type === 'none') delete o.gear;
+  if (G.base && !(o.gear.base)) placeGearBase(o);
+  if (G.shake != null && !o.cons.shake) o.cons.shake = G.shake;
+  if (G.car && !o.cons.mount) { const so = project.objects.find(x => x.id !== o.id && ASSETS[x.type].pilot === 'car'); if (type === 'carmount' && so) { convertMount(o, so.id); o.cons.mount = so.id; } }
+  _gearTrackVer = -1; bump(); commit(); renderInspector();
+}
+function createCameraCar(o) {
+  const subj = project.objects.find(x => x.id !== o.id && ASSETS[x.type].pilot === 'car' && x.id !== (o.gear && o.gear.veh));
+  const p = camWorld(o, curFrame, new THREE.Vector3());
+  const v = addObject('suv', { silent: true, name: 'Carro de câmera (Russian Arm)', params: Object.assign(defaultParams('suv'), { length: 4.94, width: 2.01, height: 1.78, color: '#1c1d20' }), base: { px: p.x + 2.5, py: 0, pz: p.z, ry: subj ? getVal(subj, 'ry', curFrame) : 0 } });
+  // se houver um carro herói, o carro de câmera copia a trajetória dele, 4,5 m ao lado
+  if (subj) { for (const ch of ['px', 'pz', 'ry']) { v.tracks[ch] = JSON.parse(JSON.stringify(subj.tracks[ch] || [])); v.base[ch] = subj.base[ch]; } v.cons.follow = null; const off = 4.5; const S = { px: [], pz: [] }; for (let f = 0; f <= project.duration; f++) { const yaw = getVal(subj, 'ry', f) * DEG; S.px.push({ f, v: getVal(subj, 'px', f) + Math.cos(yaw) * off }); S.pz.push({ f, v: getVal(subj, 'pz', f) - Math.sin(yaw) * off }); } writeSamples(v, 'px', S.px, 'simplify', 0.005); writeSamples(v, 'pz', S.pz, 'simplify', 0.005); }
+  buildRuntime(v); o.gear = { type: 'russian', veh: v.id }; convertMount(o, v.id); o.cons.mount = v.id;
+  // câmera no fim do braço: 3,5 m à frente-lado do pivô, altura de 1,2 m
+  const r = rt.get(v.id); o.base.px = -1.2; o.base.py = (r && r.size ? r.size.y : 1.78) + 0.35 - 0.6; o.base.pz = 3.6; for (const ch of ['px', 'py', 'pz']) delete o.tracks[ch];
+  if (subj && !o.cons.aim) { o.cons.aim = subj.id; o.cons.aimH = 0.6; }
+  bump(); commit(); renderOutliner(); renderInspector(); toast('Carro de câmera criado: a câmera está no braço de 4,3 m e segue o carro herói ao lado');
+}
+function suggestGear(o) {
+  const order = ['tripod', 'slider', 'dolly', 'steadicam', 'gimbal', 'jib', 'techno', 'russian', 'carmount', 'drone', 'fpv', 'cable'];
+  const fits = [];
+  for (const k of order) {
+    const G = GEAR[k], tmp = Object.assign({}, o.gear || {}, { type: k });
+    if (G.car && !(o.cons.mount && ASSETS[getObj(o.cons.mount)?.type]?.pilot === 'car')) continue;
+    const saved = o.gear; o.gear = tmp; if (G.base) placeGearBase(o, Math.round(project.duration / 2)); const R = gearCheck(o, k); o.gear = saved;
+    if (R.ok) fits.push([k, tmp]);
+  }
+  if (!fits.length) return toast('Nenhum equipamento real faz esse movimento inteiro — veja os avisos e ajuste a velocidade/altura', 6000);
+  const [k, tmp] = fits[0]; o.gear = tmp; if (GEAR[k].shake != null && !o.cons.shake) o.cons.shake = GEAR[k].shake;
+  _gearTrackVer = -1; bump(); commit(); renderInspector(); toast(`Sugestão: ${GEAR[k].lb}` + (fits.length > 1 ? ` (também serve: ${fits.slice(1, 4).map(x => GEAR[x[0]].lb.split(' (')[0]).join(', ')})` : ''), 6000);
+}
+/* ---------- desenho do equipamento em escala ---------- */
+let _gearTrackVer = -1; const _gearStatic = new Map();
+function cylBetween(a, b, r, mat, parent) { const d = _gv2.copy(b).sub(a), L = d.length(); if (L < 1e-4) return; const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, L, 10), mat); m.position.copy(a).addScaledVector(d, 0.5); m.quaternion.setFromUnitVectors(UP, d.normalize()); parent.add(m); return m; }
+let _opRigs = new Map();
+function updateGearViz(f) {
+  gearViz.clear();
+  for (const o of project.objects) {
+    if (o.type !== 'camera' || !o.gear || o.gear.type === 'none' || o.hidden) continue;
+    const G = GEAR[o.gear.type]; if (!G) continue; const r = rt.get(o.id); if (!r) continue;
+    const p = r.g.getWorldPosition(new THREE.Vector3()), gy = groundBelow(p), fw = new THREE.Vector3(0, 0, -1).applyQuaternion(r.g.quaternion); fw.y = 0; if (fw.lengthSq() < 1e-6) fw.set(0, 0, -1); fw.normalize();
+    const yaw = Math.atan2(fw.x, fw.z), t = o.gear.type, grp = new THREE.Group(); gearViz.add(grp);
+    if (t === 'tripod' || t === 'slider') {
+      const head = p.clone(); head.y -= 0.16; const hh = Math.max(0.1, head.y - gy), sp = Math.min(0.55, 0.12 + hh * 0.33);
+      const tripodAt = (c) => { for (let i = 0; i < 3; i++) { const a = yaw + i * Math.PI * 2 / 3 + Math.PI / 3; cylBetween(c, new THREE.Vector3(c.x + Math.sin(a) * sp, gy, c.z + Math.cos(a) * sp), 0.016, _gm.dark, grp); } };
+      if (t === 'tripod') tripodAt(head); else { const dir = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw)); const a = head.clone().addScaledVector(dir, -0.6), b = head.clone().addScaledVector(dir, 0.6); cylBetween(a, b, 0.03, _gm.metal, grp); tripodAt(a); tripodAt(b); }
+      cylBetween(head, p, 0.05, _gm.dark, grp);
+    }
+    if (t === 'dolly') {
+      const ch = new THREE.Mesh(new THREE.BoxGeometry(0.51, 0.25, 1.07), _gm.yel); const back = new THREE.Vector3(p.x - fw.x * 0.35, gy + 0.2, p.z - fw.z * 0.35); ch.position.copy(back); ch.rotation.y = yaw; grp.add(ch);
+      cylBetween(new THREE.Vector3(back.x, gy + 0.32, back.z), new THREE.Vector3(p.x, p.y - 0.12, p.z), 0.06, _gm.metal, grp);
+      const st = _gearStatic.get(o.id); if (!st || st.ver !== animVer) { _gearStatic.set(o.id, { ver: animVer, g: buildTrack(o) }); }
+      grp.add(_gearStatic.get(o.id).g.clone());
+    }
+    if (G.op) { // operador em escala real atrás da câmera
+      let op = _opRigs.get(o.id); if (!op) { op = buildPerson(Object.assign(defaultParams('person'), { look: 'mannequin', height: 1.78 })); _opRigs.set(o.id, op); }
+      const back = 0.42 + (t === 'steadicam' ? 0.25 : 0); op.position.set(p.x - fw.x * back, gy, p.z - fw.z * back); op.rotation.set(0, yaw, 0);
+      const c = motion(o), i = clamp(Math.round(f), 0, c.N - 1); animPerson(op.userData.rig, { t: f / project.fps, dist: c.dist[i], speed: c.speed[i], yawRate: 0, vy: 0, y: 0 }, { pose: 'stand' });
+      const R2 = op.userData.rig, low = (p.y - gy) < 0.9; if (low) { R2.hips.position.y = R2.hipY * 0.55; R2.legs.forEach(L => { L.h.rotation.x = -1.3; L.k.rotation.x = 1.9; }); }
+      R2.arms.forEach(A => { A.s.rotation.set(-1.15, 0, A.side * -0.15); A.e.rotation.set(-0.35, 0, 0); });
+      grp.add(op);
+      if (t === 'steadicam') { const post = new THREE.Vector3(p.x - fw.x * 0.18, p.y - 0.15, p.z - fw.z * 0.18); cylBetween(post, new THREE.Vector3(post.x, post.y - 0.55, post.z), 0.02, _gm.metal, grp); cylBetween(new THREE.Vector3(post.x, post.y - 0.3, post.z), new THREE.Vector3(op.position.x, gy + 1.05, op.position.z), 0.025, _gm.dark, grp); }
+    }
+    if (G.base && o.gear.base) {
+      const B = o.gear.base, base = new THREE.Vector3(B.x, B.y || 0, B.z), pv = gearPivot(o, f, new THREE.Vector3()), R = gearCheck._last && gearCheck._last.id === o.id ? null : null;
+      const bx = new THREE.Mesh(new THREE.BoxGeometry(G.baseW || 0.7, 0.35, G.baseL || 0.7), _gm.dark); bx.position.set(base.x, base.y + 0.175, base.z); grp.add(bx);
+      cylBetween(new THREE.Vector3(base.x, base.y + 0.3, base.z), pv, t === 'techno' ? 0.12 : 0.05, _gm.metal, grp);
+      const dist = p.distanceTo(pv), [a, b] = G.reach, inR = dist >= a - 0.05 && dist <= b + 0.05, dir = p.clone().sub(pv).normalize();
+      cylBetween(pv, p, t === 'techno' ? 0.11 : 0.05, inR ? _gm.yel : _gm.bad, grp);
+      if (t === 'techno') cylBetween(pv, pv.clone().addScaledVector(dir, Math.min(dist, a)), 0.15, inR ? _gm.yel : _gm.bad, grp);
+      const rearL = G.rear || 1.2, rear = pv.clone().addScaledVector(dir, -rearL); cylBetween(pv, rear, 0.08, _gm.metal, grp); const cw = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.4), _gm.dark); cw.position.copy(rear); grp.add(cw);
+    }
+    if (t === 'russian') {
+      const pv = gearPivot(o, f, new THREE.Vector3()); if (pv) { const ok = p.distanceTo(pv) <= G.arm + 0.05; cylBetween(new THREE.Vector3(pv.x, pv.y - 0.35, pv.z), pv, 0.12, _gm.dark, grp); cylBetween(pv, p, 0.07, ok ? _gm.metal : _gm.bad, grp); const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 14, 10), _gm.dark); head.position.copy(p); grp.add(head); }
+    }
+    if (t === 'carmount') { cylBetween(p, new THREE.Vector3(p.x, p.y - 0.25, p.z), 0.03, _gm.dark, grp); const pl = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.02, 14), _gm.dark); pl.position.set(p.x, p.y - 0.26, p.z); grp.add(pl); }
+    if (t === 'drone' || t === 'fpv') {
+      const d = new THREE.Group(); d.position.set(p.x, p.y + (t === 'drone' ? 0.3 : 0.08), p.z); d.rotation.y = yaw; grp.add(d);
+      const L = t === 'drone' ? 0.71 : 0.3; const body = new THREE.Mesh(new THREE.BoxGeometry(L * 0.35, 0.1, L * 0.7), _gm.dark); d.add(body);
+      for (const [sx, sz] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) { const tip = new THREE.Vector3(sx * L * 0.5, t === 'drone' ? 0.12 : 0, sz * L * 0.35); cylBetween(new THREE.Vector3(0, 0, 0), tip, 0.015, _gm.dark, d); const pr = new THREE.Mesh(new THREE.CylinderGeometry(L * 0.22, L * 0.22, 0.005, 20), new THREE.MeshBasicMaterial({ color: '#9aa0a6', transparent: true, opacity: .35 })); pr.position.copy(tip); pr.position.y += 0.03; d.add(pr); }
+      if (t === 'drone') cylBetween(new THREE.Vector3(0, -0.05, 0), new THREE.Vector3(0, -0.22, 0), 0.02, _gm.dark, d);
+    }
+    if (t === 'cable') {
+      const st = _gearStatic.get(o.id); if (!st || st.ver !== animVer) _gearStatic.set(o.id, { ver: animVer, g: buildCableTowers(o) }); grp.add(_gearStatic.get(o.id).g.clone());
+      cylBetween(p, new THREE.Vector3(p.x, p.y + 0.5, p.z), 0.02, _gm.dark, grp);
+    }
+  }
+}
+function buildTrack(o) { // trilho de dolly sob todo o trajeto da câmera (bitola 0,62 m, dormentes a cada 0,6 m)
+  const g = new THREE.Group(), pts = []; for (let f = 0; f <= project.duration; f += 1) { const p = camWorld(o, f, new THREE.Vector3()); if (!pts.length || p.distanceTo(pts[pts.length - 1]) > 0.05) pts.push(p); }
+  if (pts.length < 2) { const p = pts[0] || new THREE.Vector3(); pts.length = 0; pts.push(p.clone().add(new THREE.Vector3(-1.2, 0, 0)), p.clone().add(new THREE.Vector3(1.2, 0, 0))); }
+  const first = pts[0], last = pts[pts.length - 1], d0 = pts[1].clone().sub(first).setY(0).normalize(), d1 = last.clone().sub(pts[pts.length - 2]).setY(0).normalize();
+  pts.unshift(first.clone().addScaledVector(d0, -1.2)); pts.push(last.clone().addScaledVector(d1, 1.2));
+  let acc = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i], d = b.clone().sub(a).setY(0); const L = d.length(); if (L < 1e-4) continue; d.normalize(); const rgt = new THREE.Vector3(-d.z, 0, d.x);
+    const ga = groundBelow(a), gb = groundBelow(b);
+    for (const s of [-0.31, 0.31]) cylBetween(new THREE.Vector3(a.x + rgt.x * s, ga + 0.06, a.z + rgt.z * s), new THREE.Vector3(b.x + rgt.x * s, gb + 0.06, b.z + rgt.z * s), 0.02, _gm.metal, g);
+    for (let u = (0.6 - acc % 0.6); u < L; u += 0.6) { const c = a.clone().addScaledVector(d, u); const sl = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.04, 0.1), _gm.wood); sl.position.set(c.x, groundBelow(c) + 0.02, c.z); sl.rotation.y = Math.atan2(d.x, d.z); g.add(sl); }
+    acc += L;
+  }
+  return g;
+}
+function buildCableTowers(o) {
+  const g = new THREE.Group(), a = camWorld(o, 0, new THREE.Vector3()), b = camWorld(o, project.duration, new THREE.Vector3()), d = b.clone().sub(a).setY(0); if (d.lengthSq() < 0.01) d.set(1, 0, 0); d.normalize();
+  const A = a.clone().addScaledVector(d, -5), B = b.clone().addScaledVector(d, 5), top = Math.max(a.y, b.y) + 0.6;
+  for (const T of [A, B]) { cylBetween(new THREE.Vector3(T.x, groundBelow(T), T.z), new THREE.Vector3(T.x, top, T.z), 0.12, _gm.metal, g); }
+  cylBetween(new THREE.Vector3(A.x, top, A.z), new THREE.Vector3(B.x, top, B.z), 0.01, _gm.dark, g); return g;
+}
+/* ---------- biblioteca: câmeras já montadas em equipamento ---------- */
+function gearLibraryHTML(card, m, subj, isCar) {
+  return `<div class="acat">Equipamentos de filmagem (escala e limites reais)</div><div class="agrid">` + Object.entries(GEAR).filter(([k, v]) => k !== 'none' && m(v.lb)).map(([k, v]) => card(`data-gear="${k}"`, null, v.ic, v.lb, v.car ? 'preso a um carro' : v.hMax ? `lente ${v.hMin}–${v.hMax} m` : '', v.car && k === 'carmount' && !isCar)).join('') + '</div>';
+}
+function createGearCamera(k, subj) {
+  const G = GEAR[k], t = subj ? worldPos(subj, curFrame, new THREE.Vector3()) : new THREE.Vector3(0, 0, 0), sy = subj ? getVal(subj, 'ry', curFrame) * DEG : 0;
+  const pos = { tripod: [5, 1.5, 4], slider: [4, 1.3, 3], dolly: [6, 1.2, 0], steadicam: [0, 1.5, -4], gimbal: [0, 1.4, -3.5], handheld: [2.5, 1.6, -3], jib: [6, 3, 3], techno: [7, 4.5, 4], russian: [3, 1.2, 4], carmount: [0, 1.6, 2], drone: [25, 30, 25], fpv: [6, 3, -8], cable: [0, 10, 0] }[k] || [5, 1.5, 5];
+  const off = new THREE.Vector3(pos[0], 0, pos[2]).applyAxisAngle(UP, sy);
+  const cam = addObject('camera', { silent: true, name: G.lb.split(' (')[0], base: { px: t.x + off.x, py: pos[1] + (subj ? 0 : 0), pz: t.z + off.z, focal: k === 'drone' ? 24 : k === 'techno' ? 32 : 35 } });
+  if (subj) { cam.cons.aim = subj.id; cam.cons.aimH = Math.min(1.2, (rt.get(subj.id)?.size?.y || 1.5) * 0.6); }
+  buildRuntime(cam); project.activeCamera = cam.id;
+  if (k === 'russian') { createCameraCar(cam); }
+  else if (k === 'carmount') { if (subj && ASSETS[subj.type].pilot === 'car') { cam.gear = { type: k }; convertMount(cam, subj.id); cam.cons.mount = subj.id; cam.base.px = 0; cam.base.py = (rt.get(subj.id)?.size?.y || 1.4) + 0.12; cam.base.pz = (rt.get(subj.id)?.size?.z || 4.5) * 0.15; cam.cons.aim = null; cam.base.ry = 180; cam.base.rx = -6; } }
+  else { cam.gear = { type: k }; if (G.base) placeGearBase(cam); if (G.shake != null) cam.cons.shake = G.shake; }
+  bump(); select(cam.id); commit(); renderOutliner(); toast(`${G.lb}: câmera criada no equipamento — anime e confira os limites no inspetor`);
+}
+function initGearUI() {
+  insp.addEventListener('change', e => { const o = sel && getObj(sel); if (o && e.target.id === 'gearSel') setGear(o, e.target.value); });
+  insp.addEventListener('click', e => {
+    const o = sel && getObj(sel), b = e.target.closest('[data-gear-act]'); if (!o || !b) return; const a = b.dataset.gearAct;
+    if (a === 'base') { placeGearBase(o); bump(); commit(); renderInspector(); }
+    if (a === 'car') { if (o.gear && o.gear.type === 'russian') createCameraCar(o); else { const so = project.objects.find(x => x.id !== o.id && ASSETS[x.type].pilot === 'car'); if (!so) return toast('Adicione um carro primeiro'); convertMount(o, so.id); o.cons.mount = so.id; bump(); commit(); renderInspector(); } }
+    if (a === 'suggest') suggestGear(o);
+  });
+}
+
+/* ============================================================
+   VELOCIDADE PRECISA (km/h) + QUILOMETRAGEM
+   - Mede velocidade e distância em 3D (inclui subidas/descidas da estrada), com sub-amostragem.
+   - Perfil de velocidade: pontos [tempo (s), km/h] interpolados linearmente; a distância é a
+     integral exata do perfil e o objeto é reposicionado ao longo da MESMA trajetória
+     (comprimento de arco), então a forma do caminho não muda — só o tempo.
+   o.speedProf = [{ t, v }]  (s, km/h)
+   ============================================================ */
+const SUB = 4; // sub-amostras por frame nas medições
+function roadSig() { let s = ''; for (const o of project.objects) if (o.type === 'roadpath') s += o.id + (o.hidden ? 'h' : '') + JSON.stringify(roadPts(o.params)) + o.base.px + ',' + o.base.pz + ',' + o.base.py + ',' + o.base.ry + ';'; return s; }
+const _odo = new Map();
+function odometer(o) {
+  const key = animVer + '|' + project.duration + '|' + project.fps + '|' + roadSig();
+  let c = _odo.get(o.id); if (c && c.key === key) return c;
+  const N = project.duration, fps = project.fps, dist = new Float64Array(N + 1), speed = new Float64Array(N + 1);
+  const P = new THREE.Vector3(), Q = new THREE.Vector3();
+  worldPos(o, 0, P); let maxV = 0, maxA = 0;
+  for (let f = 1; f <= N; f++) { let d = 0; for (let k = 1; k <= SUB; k++) { worldPos(o, f - 1 + k / SUB, Q); d += Q.distanceTo(P); P.copy(Q); } dist[f] = dist[f - 1] + d; }
+  for (let f = 0; f <= N; f++) { const a = Math.max(0, f - 0.5), b = Math.min(N, f + 0.5); worldPos(o, a, P); worldPos(o, b, Q); speed[f] = b > a ? Q.distanceTo(P) / ((b - a) / fps) : 0; maxV = Math.max(maxV, speed[f]); }
+  for (let f = 1; f <= N; f++) maxA = Math.max(maxA, Math.abs(speed[f] - speed[f - 1]) * fps);
+  c = { key, dist, speed, maxV, maxA }; _odo.set(o.id, c); return c;
+}
+const fmtKm = (m) => m >= 1000 ? (m / 1000).toFixed(3).replace('.', ',') + ' km' : m.toFixed(2).replace('.', ',') + ' m';
+const fmtV = (ms) => (ms * 3.6).toFixed(1).replace('.', ',') + ' km/h';
+/* ---------- trajetória (forma) independente do tempo ---------- */
+function pathPolyline(o) {
+  const N = project.duration, pts = [], v = new THREE.Vector3();
+  const hasY = !!(o.tracks.py && o.tracks.py.length > 1) && ASSETS[o.type].pilot === 'bird';
+  for (let f = 0; f <= N; f += 1 / SUB) { rawPos(o, f, v); const q = v.clone(); if (!pts.length || q.distanceTo(pts[pts.length - 1]) > 0.002) pts.push(q); }
+  let len = 0; for (let i = 1; i < pts.length; i++) len += hDist(pts[i - 1], pts[i], hasY);
+  return { pts, hasY, len };
+}
+function hDist(a, b, hasY) { // distância real: horizontal + desnível do terreno (ou altura de voo)
+  const dx = b.x - a.x, dz = b.z - a.z; let dy = hasY ? b.y - a.y : 0;
+  if (!hasY && _roadRelief) { const ga = groundAt(a.x, a.z) || 0, gb = groundAt(b.x, b.z) || 0; dy = gb - ga; }
+  return Math.sqrt(dx * dx + dz * dz + dy * dy);
+}
+function profileDistance(prof, t) { // ∫ v dt de prof[0].t até t (m), v em km/h linear por partes
+  let s = 0; const P = prof;
+  for (let i = 0; i < P.length; i++) {
+    const a = P[i], b = P[i + 1], ta = a.t, tb = b ? b.t : Infinity; if (t <= ta) break;
+    const te = Math.min(t, tb), va = a.v / 3.6, vb = b ? b.v / 3.6 : va, ve = b ? va + (vb - va) * (te - ta) / (tb - ta) : va;
+    s += (va + ve) / 2 * (te - ta);
+  }
+  return s;
+}
+function applySpeedProfile(o) {
+  const prof = (o.speedProf || []).slice().sort((a, b) => a.t - b.t); if (!prof.length) return toast('Defina pelo menos um ponto de velocidade');
+  const fps = project.fps, N = project.duration, t0 = prof[0].t;
+  let { pts, hasY } = pathPolyline(o);
+  const need = profileDistance(prof, N / fps) + 1;
+  // caminho parado ou curto demais: segue reto na direção do objeto
+  if (pts.length < 2) { const h = getVal(o, 'ry', curFrame) * DEG, p0 = pts[0] || rawPos(o, 0, new THREE.Vector3()); pts = [p0.clone(), p0.clone().add(new THREE.Vector3(Math.sin(h), 0, Math.cos(h)).multiplyScalar(need))]; }
+  const cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + hDist(pts[i - 1], pts[i], hasY));
+  let total = cum[cum.length - 1];
+  if (total < need) { const a = pts[pts.length - 2], b = pts[pts.length - 1], d = b.clone().sub(a); if (!hasY) d.y = 0; d.normalize(); const ext = b.clone().addScaledVector(d, need - total + 1); pts.push(ext); cum.push(total + hDist(b, ext, hasY)); total = cum[cum.length - 1]; }
+  let seg = 0;
+  const at = (s) => { s = clamp(s, 0, total); while (seg > 0 && cum[seg] > s) seg--; while (seg < cum.length - 2 && cum[seg + 1] < s) seg++; const a = pts[seg], b = pts[seg + 1], u = (s - cum[seg]) / Math.max(1e-9, cum[seg + 1] - cum[seg]); return a.clone().lerp(b, u); };
+  const S = { px: [], py: [], pz: [], ry: [] }; let prevYaw = getVal(o, 'ry', 0);
+  for (let f = 0; f <= N; f++) {
+    const s = profileDistance(prof, f / fps), p = at(s);
+    const ahead = at(s + 0.6), behind = at(Math.max(0, s - 0.6)), dx = ahead.x - behind.x, dz = ahead.z - behind.z;
+    let yaw = prevYaw; if (Math.hypot(dx, dz) > 0.05) { yaw = Math.atan2(dx, dz) / DEG; while (yaw - prevYaw > 180) yaw -= 360; while (yaw - prevYaw < -180) yaw += 360; } prevYaw = yaw;
+    S.px.push({ f, v: p.x }); S.pz.push({ f, v: p.z }); S.ry.push({ f, v: yaw }); if (hasY) S.py.push({ f, v: p.y });
+  }
+  // primeiros frames antes do início do perfil: parado na largada com a mesma direção
+  for (const ch of ['px', 'pz', 'ry']) writeSamples(o, ch, S[ch], 'simplify', ch === 'ry' ? 0.02 : 0.0015);
+  if (hasY) writeSamples(o, 'py', S.py, 'simplify', 0.0015);
+  commit(); tlDirty = true; pathVer = -1; bump();
+  // conferência: velocidade medida x pedida
+  const od = odometer(o); let err = 0; for (let f = 1; f < N; f++) { const want = (() => { const t = f / fps; let v = prof[0].v; for (let i = 0; i < prof.length; i++) { const a = prof[i], b = prof[i + 1]; if (t >= a.t && (!b || t <= b.t)) { v = b ? a.v + (b.v - a.v) * (t - a.t) / (b.t - a.t) : a.v; break; } if (t < a.t) { v = 0; break; } } return v; })(); err = Math.max(err, Math.abs(od.speed[f] * 3.6 - want)); }
+  renderInspector(); toast(`Velocidade aplicada · percorre ${fmtKm(od.dist[N])} · erro máx. ${err.toFixed(2).replace('.', ',')} km/h`, 5000);
+}
+function readProfile(o) { const od = odometer(o), fps = project.fps, N = project.duration, step = Math.max(1, Math.round(fps)); const P = []; for (let f = 0; f <= N; f += step) P.push({ t: +(f / fps).toFixed(2), v: +(od.speed[f] * 3.6).toFixed(1) }); if (P[P.length - 1].t < N / fps) P.push({ t: +(N / fps).toFixed(2), v: +(od.speed[N] * 3.6).toFixed(1) }); o.speedProf = P; }
+const SPEED_PRESETS = {
+  const: { lb: 'Constante', f: (v, T) => [{ t: 0, v }] },
+  launch: { lb: 'Arrancar 0 → X em T s', f: (v, T) => [{ t: 0, v: 0 }, { t: T, v }] },
+  brake: { lb: 'Frear X → 0 em T s', f: (v, T, D) => [{ t: 0, v }, { t: Math.max(0, D - T), v }, { t: D, v: 0 }] },
+  pass: { lb: 'Passa acelerando (X → X+40%)', f: (v, T, D) => [{ t: 0, v }, { t: D, v: v * 1.4 }] },
+  stopgo: { lb: 'Chega, para 1 s e sai', f: (v, T, D) => [{ t: 0, v }, { t: D * 0.35, v: 0 }, { t: D * 0.35 + 1, v: 0 }, { t: D, v }] },
+};
+function speedSectionHTML(o) {
+  const od = odometer(o), f = clamp(Math.round(curFrame), 0, project.duration), N = project.duration, fps = project.fps;
+  const avg = od.dist[N] / Math.max(1e-6, N / fps), g = od.maxA / 9.81;
+  let h = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:2px 0 6px">
+    <div class="hint" style="margin:0"><span style="color:var(--tx3)">Agora (frame ${f})</span><br><b style="font-size:15px;color:var(--tx)">${fmtV(od.speed[f])}</b></div>
+    <div class="hint" style="margin:0"><span style="color:var(--tx3)">Odômetro</span><br><b style="font-size:15px;color:var(--tx)">${fmtKm(od.dist[f])}</b></div></div>
+    <div class="hint" style="margin:0 0 4px">Cena inteira: ${fmtKm(od.dist[N])} em ${(N / fps).toFixed(2).replace('.', ',')} s · média ${fmtV(avg)} · máx. ${fmtV(od.maxV)} · aceleração máx. ${g.toFixed(2).replace('.', ',')} g${g > 1.1 ? ' <span style="color:#ff8a80">⚠ acima do que um carro de rua faz (~1 g)</span>' : ''}</div>
+    <canvas id="spdGraph" width="560" height="150" style="width:100%;height:110px;background:var(--bg2,#17181b);border-radius:6px;margin:4px 0"></canvas>`;
+  const P = o.speedProf || [];
+  h += `<div class="ph" style="margin:8px 0 4px;padding:0">Perfil de velocidade</div>`;
+  h += `<table style="width:100%;border-collapse:collapse;font-size:11px"><tr style="color:var(--tx3)"><td>Tempo (s)</td><td>km/h</td><td></td></tr>` + P.map((p, i) => `<tr><td><input type="number" step="0.1" min="0" data-sp="${i}:t" value="${p.t}" style="width:100%"></td><td><input type="number" step="1" min="0" data-sp="${i}:v" value="${p.v}" style="width:100%"></td><td><button class="ghost" data-spdel="${i}">✕</button></td></tr>`).join('') + `</table>`;
+  h += `<div class="btnrow"><button data-spadd="1">＋ Ponto no frame atual</button><button data-spread="1">Ler da animação</button></div>`;
+  h += `<div class="prow wide"><span class="lb">Modelo</span><select id="spPre">${Object.entries(SPEED_PRESETS).map(([k, v]) => `<option value="${k}">${v.lb}</option>`).join('')}</select></div>
+    <div class="prow wide"><span class="lb">X (km/h)</span><input type="number" id="spX" value="${Math.round(od.maxV * 3.6) || 60}" step="5" min="1"></div>
+    <div class="prow wide"><span class="lb">T (s)</span><input type="number" id="spT" value="3" step="0.5" min="0.1"></div>
+    <div class="btnrow"><button data-spfill="1">Preencher perfil</button><button class="pri" data-spapply="1">▶ Aplicar velocidade</button></div>
+    <div class="hint">A forma do trajeto continua igual — só o tempo muda. A distância é a integral exata do perfil (km/h × tempo), medida em 3D, incluindo subidas e descidas da estrada. Sem trajeto, o objeto anda reto para a frente.</div>`;
+  return h;
+}
+function drawSpeedGraph(o) {
+  const cv = document.getElementById('spdGraph'); if (!cv) return; const ctx = cv.getContext('2d'), W = cv.width, H = cv.height, od = odometer(o), N = project.duration, fps = project.fps;
+  const P = o.speedProf || []; let vmax = Math.max(10, od.maxV * 3.6, ...P.map(p => p.v)); vmax = Math.ceil(vmax / 20) * 20;
+  ctx.clearRect(0, 0, W, H); ctx.font = '18px Inter, sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.lineWidth = 1;
+  const X = f => 44 + (W - 54) * f / N, Y = v => H - 22 - (H - 34) * v / vmax;
+  for (let v = 0; v <= vmax; v += vmax / 4) { ctx.beginPath(); ctx.moveTo(44, Y(v)); ctx.lineTo(W - 10, Y(v)); ctx.stroke(); ctx.fillText(String(Math.round(v)), 4, Y(v) + 6); }
+  ctx.fillText('km/h', 4, 16); ctx.fillText((N / fps).toFixed(1) + ' s', W - 64, H - 2);
+  ctx.strokeStyle = '#7aa7ff'; ctx.lineWidth = 3; ctx.beginPath(); for (let f = 0; f <= N; f++) { const x = X(f), y = Y(od.speed[f] * 3.6); f ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke();
+  ctx.fillStyle = '#ffb02e'; for (const p of P) { ctx.beginPath(); ctx.arc(X(p.t * fps), Y(p.v), 6, 0, 7); ctx.fill(); }
+  ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(X(curFrame), 8); ctx.lineTo(X(curFrame), H - 22); ctx.stroke();
+}
+function initSpeedUI() {
+  insp.addEventListener('click', e => {
+    const o = sel && getObj(sel), b = e.target.closest('button'); if (!o || !b) return;
+    if (b.dataset.spdel != null) { o.speedProf.splice(+b.dataset.spdel, 1); commit(); renderInspector(); }
+    if (b.dataset.spadd) { const od = odometer(o), f = clamp(Math.round(curFrame), 0, project.duration); (o.speedProf = o.speedProf || []).push({ t: +(f / project.fps).toFixed(2), v: +(od.speed[f] * 3.6).toFixed(1) }); o.speedProf.sort((a, c) => a.t - c.t); commit(); renderInspector(); }
+    if (b.dataset.spread) { readProfile(o); commit(); renderInspector(); }
+    if (b.dataset.spfill) { const pr = SPEED_PRESETS[$('#spPre').value]; o.speedProf = pr.f(+$('#spX').value || 60, +$('#spT').value || 3, project.duration / project.fps).map(p => ({ t: +p.t.toFixed(2), v: +p.v.toFixed(1) })); commit(); renderInspector(); }
+    if (b.dataset.spapply) applySpeedProfile(o);
+  });
+  insp.addEventListener('change', e => { const o = sel && getObj(sel), t = e.target; if (!o || !t.dataset.sp) return; const [i, k] = t.dataset.sp.split(':'); o.speedProf[+i][k] = Math.max(0, +t.value || 0); o.speedProf.sort((a, c) => a.t - c.t); commit(); renderInspector(); });
+}
+/* ---------- HUD no viewport ---------- */
+const speedHud = document.createElement('div'); speedHud.style.cssText = 'position:absolute;left:64px;top:12px;z-index:5;pointer-events:none;font:600 12px Inter,sans-serif;color:#e8eaed;background:rgba(20,21,24,.78);border:1px solid rgba(255,255,255,.08);padding:6px 10px;border-radius:8px;display:none;white-space:nowrap';
+renderer.domElement.parentElement.appendChild(speedHud);
+function updateSpeedHud(f) {
+  const o = sel && getObj(sel);
+  if (!o || !ASSETS[o.type].pilot || o.type === 'camera' && !(o.gear && o.gear.type !== 'none')) { speedHud.style.display = 'none'; return; }
+  if (pilot.on && pilot.id === o.id) { speedHud.style.display = 'block'; speedHud.textContent = `🎮 ${fmtV(Math.abs(pilot.s.v))} · ${fmtKm(pilot.s.dist || 0)}`; return; }
+  const od = odometer(o), i = clamp(Math.round(f), 0, project.duration); if (od.maxV < 0.01) { speedHud.style.display = 'none'; return; }
+  speedHud.style.display = 'block'; speedHud.innerHTML = `${ASSETS[o.type].icon} <span style="font-size:15px">${fmtV(od.speed[i])}</span> <span style="color:#9aa0a6;font-weight:500">· ${fmtKm(od.dist[i])} percorridos</span>`;
 }
 
 init();
