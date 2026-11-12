@@ -186,10 +186,10 @@ function sanitizeProject(d) {
   p.objects = (d.objects || []).filter(o => ASSETS[o.type]).map(o => {
     const base = Object.assign({ px: 0, py: 0, pz: 0, rx: 0, ry: 0, rz: 0, sx: 1, sy: 1, sz: 1 }, o.base || {}); if (o.type === 'camera' && base.focal == null) base.focal = 35;
     const tracks = {}; for (const ch in (o.tracks || {})) { const ks = (o.tracks[ch] || []).map(k => Object.assign(mkKey(k.f, k.v), k)); if (ks.length) { sortKeys(ks); autoHandles(ks); tracks[ch] = ks; } }
-    return { id: o.id || uid(), type: o.type, name: o.name || ASSETS[o.type].label, params: Object.assign(defaultParams(o.type), o.params || {}), base, tracks, cons: Object.assign({ aim: null, aimH: 1, follow: null, mount: null, shake: 0, shakeFreq: 1.5 }, o.cons || {}), hidden: !!o.hidden, refs: o.refs || undefined, custom: o.custom || undefined, gear: o.gear || undefined, speedProf: Array.isArray(o.speedProf) ? o.speedProf.filter(p => isFinite(p.t) && isFinite(p.v)) : undefined, clips: (o.clips || []).filter(c => PERSON_ACTIONS[c.kind] || QUAD_ACTIONS[c.kind]).map(c => ({ id: c.id || uid('c'), kind: c.kind, start: +c.start, end: +c.end })) };
+    return { id: o.id || uid(), type: o.type, name: o.name || ASSETS[o.type].label, params: Object.assign(defaultParams(o.type), o.params || {}), base, tracks, cons: Object.assign({ aim: null, aimH: 1, follow: null, mount: null, shake: 0, shakeFreq: 1.5 }, o.cons || {}), hidden: !!o.hidden, refs: o.refs || undefined, custom: o.custom || undefined, gear: o.gear || undefined, camHidden: o.camHidden || undefined, speedProf: Array.isArray(o.speedProf) ? o.speedProf.filter(p => isFinite(p.t) && isFinite(p.v)) : undefined, clips: (o.clips || []).filter(c => PERSON_ACTIONS[c.kind] || QUAD_ACTIONS[c.kind]).map(c => ({ id: c.id || uid('c'), kind: c.kind, start: +c.start, end: +c.end })) };
   });
   if (p.activeCamera && !p.objects.find(o => o.id === p.activeCamera)) p.activeCamera = null;
-  p.shots = (d.shots || []).filter(s => p.objects.find(o => o.id === s.cam)).map(s => ({ cam: s.cam, start: Math.round(+s.start || 0), end: Math.round(+s.end || 0) }));
+  p.shots = (d.shots || []).filter(s => p.objects.find(o => o.id === s.cam)).map(s => ({ cam: s.cam, start: Math.round(+s.start || 0), end: Math.round(+s.end || 0), name: String(s.name || '').slice(0, 60), notes: String(s.notes || '').slice(0, 400) }));
   return p;
 }
 function loadProjectData(d, fromHistory) {
@@ -210,7 +210,10 @@ $('#bNew').onclick = () => openModal('Nova cena', `<p>Começar uma cena vazia? A
   m.querySelector('#mNewOk').onclick = () => { closeModal(); loadProjectData(newProject()); select(null); };
   m.querySelector('#mNewCam').onclick = () => { closeModal(); loadProjectData(newProject()); addObject('camera', { base: { px: 0, py: 1.6, pz: 10, rx: -4, ry: 0 } }); };
 });
-$('#bDemo').onclick = () => { loadProjectData(demoProject()); setView('free'); toast('Cena de exemplo carregada — aperte Espaço para tocar'); };
+$('#bDemo').onclick = () => openModal('Exemplos', `<div class="btnrow" style="flex-direction:column;align-items:stretch;gap:8px"><button class="pri" id="exComm" style="padding:12px;text-align:left">🏁 <b>Comercial esportivo · 30 s</b><br><span style="font-weight:400;font-size:11.5px">911 na serra (subida, grampo, descida), pilotagem realista, 11 planos com Technocrane, Russian Arm, drone, FPV, car mounts e câmera na mão.</span></button><button id="exBasic" style="padding:12px;text-align:left">🚗 <b>Cena simples · 10 s</b><br><span style="font-weight:400;font-size:11.5px">Carro, pedestre e 3 câmeras.</span></button></div>`, m => {
+  m.querySelector('#exBasic').onclick = () => { closeModal(); loadProjectData(demoProject()); setView('free'); toast('Cena de exemplo carregada — aperte Espaço para tocar'); };
+  m.querySelector('#exComm').onclick = () => { closeModal(); toast('Montando o comercial…'); setTimeout(() => { buildSportsCommercial(); toast('Comercial de 30 s pronto — Espaço para tocar a edição · 🎬 Decupagem para ver os planos', 6000); }, 30); };
+});
 
 /* ---------- ambiente ---------- */
 function openEnvModal() {

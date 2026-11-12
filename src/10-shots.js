@@ -20,7 +20,7 @@ function drawShotsBand(ctx) {
   ctx.restore();
 }
 function normalizeShots() {
-  const s = (project.shots || []).filter(x => getObj(x.cam)).map(x => ({ cam: x.cam, start: clamp(Math.round(x.start), 0, project.duration), end: clamp(Math.round(x.end), 0, project.duration) })).filter(x => x.end >= x.start).sort((a, b) => a.start - b.start);
+  const s = (project.shots || []).filter(x => getObj(x.cam)).map(x => ({ cam: x.cam, start: clamp(Math.round(x.start), 0, project.duration), end: clamp(Math.round(x.end), 0, project.duration), name: x.name || '', notes: x.notes || '' })).filter(x => x.end >= x.start).sort((a, b) => a.start - b.start);
   project.shots = s;
 }
 function renderShotsModal() {

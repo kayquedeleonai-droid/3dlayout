@@ -1395,7 +1395,7 @@ const _carMats = {};
 function carMats(color) {
   const k = color; if (_carMats[k]) return _carMats[k];
   const body = new THREE.MeshStandardMaterial({ color, roughness: .42, metalness: .15 });
-  const glass = new THREE.MeshStandardMaterial({ color: '#1d252e', roughness: .12, metalness: .3 });
+  const glass = new THREE.MeshStandardMaterial({ color: '#1d252e', roughness: .12, metalness: .3, transparent: true, opacity: .62, depthWrite: false });
   const trim = new THREE.MeshStandardMaterial({ color: '#141518', roughness: .75, metalness: 0 });
   const hl = new THREE.MeshStandardMaterial({ color: '#e9eef2', roughness: .2, emissive: '#cfd8e0', emissiveIntensity: .35 });
   const tl = new THREE.MeshStandardMaterial({ color: '#8e1414', roughness: .3, emissive: '#5a0606', emissiveIntensity: .6, side: THREE.DoubleSide }); hl.side = THREE.DoubleSide;
@@ -1737,6 +1737,10 @@ function evalTransform(o, f) {
     if (tp.distanceToSquared(pos) > 1e-6) {
       _m.lookAt(pos, tp, UP); g.quaternion.setFromRotationMatrix(_m);
       if (o.type !== 'camera') g.rotateY(Math.PI); // objetos olham +Z
+      if (o.type === 'camera' && (c.frameX || c.frameY)) { // enquadramento: põe o alvo numa linha dos terços (ou onde quiser)
+        const focal = getVal(o, 'focal', f), vf = focalToVFov(focal, aspectNum(), camSensor(o)) * DEG, tv = Math.tan(vf / 2), th = tv * aspectNum();
+        g.rotateY(Math.atan(th * (c.frameX || 0))); g.rotateX(Math.atan(tv * -(c.frameY || 0)));
+      }
       g.rotateZ(getVal(o, 'rz', f) * DEG);
     }
   }
@@ -1796,7 +1800,7 @@ function applyFrame(f) {
     if (o.type === 'camera') updateFrustum(r.rig, r.rig.cam.fov, r.rig.cam.aspect, project.activeCamera === o.id, sel === o.id ? camFocus(o, f) : 0);
   }
   if (roadHandles.userData.road) syncRoadHandles();
-  updateGearViz(f); updateSpeedHud(f);
+  updateGearViz(f); updateSpeedHud(f); seqTick(f);
 }
 
 /* ---------- render ---------- */
@@ -2057,6 +2061,7 @@ const GEN = {
   obj: [['forward', 'Avançar em linha reta', [['dist', 'Distância (m)', 20]]], ['circle', 'Andar em círculo', [['radius', 'Raio (m)', 8], ['turns', 'Voltas', 1]]], ['spin', 'Girar no lugar', [['angle', 'Ângulo (°)', 360]]], ['rise', 'Subir / descer', [['dist', 'Altura (m)', 3]]], ['bounce', 'Quicar', [['dist', 'Altura (m)', 1], ['count', 'Quiques', 4]]]],
 };
 let genState = { preset: null, vals: {}, ease: 'inout', len: 5 };
+const fk = (v) => Math.abs(+v || 0) < 1e-3 ? '0' : (+v).toFixed(3);
 function renderInspector() {
   inspDirty = false;
   const o = sel && getObj(sel);
@@ -2082,8 +2087,10 @@ function renderInspector() {
   h += sec('cons', 'Restrições' + (c.aim || c.follow || c.shake ? ' <span style="color:var(--acc)">•</span>' : ''), `
     <div class="prow wide"><span class="lb">Mirar em</span><select data-cons="aim">${optsObj(c.aim)}</select></div>
     <div class="prow wide"><span class="lb">Altura da mira</span><input type="number" step="0.1" data-cons="aimH" value="${c.aimH}"></div>
+    ${o.type === 'camera' ? `<div class="prow wide"><span class="lb">Alvo na tela</span><select id="frameSel">${[['0,0', 'Centro'], ['-0.333,0', 'Terço esquerdo'], ['0.333,0', 'Terço direito'], ['0,-0.333', 'Terço inferior'], ['0,0.333', 'Terço superior'], ['-0.333,-0.333', 'Ponto ↙ (esq. inferior)'], ['0.333,-0.333', 'Ponto ↘ (dir. inferior)'], ['-0.333,0.333', 'Ponto ↖ (esq. superior)'], ['0.333,0.333', 'Ponto ↗ (dir. superior)']].map(([v, l]) => `<option value="${v}" ${v === fk(c.frameX) + ',' + fk(c.frameY) ? 'selected' : ''}>${l}</option>`).join('')}</select></div>` : ''}
     <div class="prow wide"><span class="lb">Seguir</span><select data-cons="follow">${optsObj(c.follow)}</select></div>
     <div class="prow wide"><span class="lb">Montar (rig)</span><select data-cons="mount">${optsObj(c.mount)}</select></div>
+    ${o.type !== 'camera' ? `<div class="prow wide"><span class="lb">Esconder nas câmeras</span><input type="checkbox" id="camHid" ${o.camHidden ? 'checked' : ''} title="Aparece no editor, mas não nas câmeras nem no vídeo (carro de câmera, equipe, marcações)"></div>` : ''}
     ${followsGround(o) ? `<div class="prow wide"><span class="lb">Seguir estrada/terreno</span><input type="checkbox" id="consGround" ${c.ground === false ? '' : 'checked'}></div>` : ''}
     <div class="prow wide"><span class="lb">Tremor (°)</span><input type="number" step="0.1" min="0" data-cons="shake" value="${c.shake}"></div>
     <div class="prow wide"><span class="lb">Freq. tremor</span><input type="number" step="0.1" min="0" data-cons="shakeFreq" value="${c.shakeFreq}"></div>
@@ -2797,10 +2804,10 @@ function sanitizeProject(d) {
   p.objects = (d.objects || []).filter(o => ASSETS[o.type]).map(o => {
     const base = Object.assign({ px: 0, py: 0, pz: 0, rx: 0, ry: 0, rz: 0, sx: 1, sy: 1, sz: 1 }, o.base || {}); if (o.type === 'camera' && base.focal == null) base.focal = 35;
     const tracks = {}; for (const ch in (o.tracks || {})) { const ks = (o.tracks[ch] || []).map(k => Object.assign(mkKey(k.f, k.v), k)); if (ks.length) { sortKeys(ks); autoHandles(ks); tracks[ch] = ks; } }
-    return { id: o.id || uid(), type: o.type, name: o.name || ASSETS[o.type].label, params: Object.assign(defaultParams(o.type), o.params || {}), base, tracks, cons: Object.assign({ aim: null, aimH: 1, follow: null, mount: null, shake: 0, shakeFreq: 1.5 }, o.cons || {}), hidden: !!o.hidden, refs: o.refs || undefined, custom: o.custom || undefined, gear: o.gear || undefined, speedProf: Array.isArray(o.speedProf) ? o.speedProf.filter(p => isFinite(p.t) && isFinite(p.v)) : undefined, clips: (o.clips || []).filter(c => PERSON_ACTIONS[c.kind] || QUAD_ACTIONS[c.kind]).map(c => ({ id: c.id || uid('c'), kind: c.kind, start: +c.start, end: +c.end })) };
+    return { id: o.id || uid(), type: o.type, name: o.name || ASSETS[o.type].label, params: Object.assign(defaultParams(o.type), o.params || {}), base, tracks, cons: Object.assign({ aim: null, aimH: 1, follow: null, mount: null, shake: 0, shakeFreq: 1.5 }, o.cons || {}), hidden: !!o.hidden, refs: o.refs || undefined, custom: o.custom || undefined, gear: o.gear || undefined, camHidden: o.camHidden || undefined, speedProf: Array.isArray(o.speedProf) ? o.speedProf.filter(p => isFinite(p.t) && isFinite(p.v)) : undefined, clips: (o.clips || []).filter(c => PERSON_ACTIONS[c.kind] || QUAD_ACTIONS[c.kind]).map(c => ({ id: c.id || uid('c'), kind: c.kind, start: +c.start, end: +c.end })) };
   });
   if (p.activeCamera && !p.objects.find(o => o.id === p.activeCamera)) p.activeCamera = null;
-  p.shots = (d.shots || []).filter(s => p.objects.find(o => o.id === s.cam)).map(s => ({ cam: s.cam, start: Math.round(+s.start || 0), end: Math.round(+s.end || 0) }));
+  p.shots = (d.shots || []).filter(s => p.objects.find(o => o.id === s.cam)).map(s => ({ cam: s.cam, start: Math.round(+s.start || 0), end: Math.round(+s.end || 0), name: String(s.name || '').slice(0, 60), notes: String(s.notes || '').slice(0, 400) }));
   return p;
 }
 function loadProjectData(d, fromHistory) {
@@ -2821,7 +2828,10 @@ $('#bNew').onclick = () => openModal('Nova cena', `<p>Começar uma cena vazia? A
   m.querySelector('#mNewOk').onclick = () => { closeModal(); loadProjectData(newProject()); select(null); };
   m.querySelector('#mNewCam').onclick = () => { closeModal(); loadProjectData(newProject()); addObject('camera', { base: { px: 0, py: 1.6, pz: 10, rx: -4, ry: 0 } }); };
 });
-$('#bDemo').onclick = () => { loadProjectData(demoProject()); setView('free'); toast('Cena de exemplo carregada — aperte Espaço para tocar'); };
+$('#bDemo').onclick = () => openModal('Exemplos', `<div class="btnrow" style="flex-direction:column;align-items:stretch;gap:8px"><button class="pri" id="exComm" style="padding:12px;text-align:left">🏁 <b>Comercial esportivo · 30 s</b><br><span style="font-weight:400;font-size:11.5px">911 na serra (subida, grampo, descida), pilotagem realista, 11 planos com Technocrane, Russian Arm, drone, FPV, car mounts e câmera na mão.</span></button><button id="exBasic" style="padding:12px;text-align:left">🚗 <b>Cena simples · 10 s</b><br><span style="font-weight:400;font-size:11.5px">Carro, pedestre e 3 câmeras.</span></button></div>`, m => {
+  m.querySelector('#exBasic').onclick = () => { closeModal(); loadProjectData(demoProject()); setView('free'); toast('Cena de exemplo carregada — aperte Espaço para tocar'); };
+  m.querySelector('#exComm').onclick = () => { closeModal(); toast('Montando o comercial…'); setTimeout(() => { buildSportsCommercial(); toast('Comercial de 30 s pronto — Espaço para tocar a edição · 🎬 Decupagem para ver os planos', 6000); }, 30); };
+});
 
 /* ---------- ambiente ---------- */
 function openEnvModal() {
@@ -3457,7 +3467,7 @@ function drawShotsBand(ctx) {
   ctx.restore();
 }
 function normalizeShots() {
-  const s = (project.shots || []).filter(x => getObj(x.cam)).map(x => ({ cam: x.cam, start: clamp(Math.round(x.start), 0, project.duration), end: clamp(Math.round(x.end), 0, project.duration) })).filter(x => x.end >= x.start).sort((a, b) => a.start - b.start);
+  const s = (project.shots || []).filter(x => getObj(x.cam)).map(x => ({ cam: x.cam, start: clamp(Math.round(x.start), 0, project.duration), end: clamp(Math.round(x.end), 0, project.duration), name: x.name || '', notes: x.notes || '' })).filter(x => x.end >= x.start).sort((a, b) => a.start - b.start);
   project.shots = s;
 }
 function renderShotsModal() {
@@ -3931,7 +3941,9 @@ function renderLens(rend, camObj, cam, mode, w, h, vx = 0, vy = 0, f = curFrame)
   cam.near = prevNear; cam.far = prevFar; cam.updateProjectionMatrix();
 }
 // render de câmera com ou sem óptica
-function renderCamera(rend, camObj, cam, mode, w, h, vx = 0, vy = 0, f = curFrame) {
+function camHide() { const hid = []; for (const o of project.objects) if (o.camHidden) { const r = rt.get(o.id); if (r && r.g.visible) { r.g.visible = false; hid.push(r.g); } } return () => hid.forEach(g => g.visible = true); }
+function renderCamera(rend, camObj, cam, mode, w, h, vx = 0, vy = 0, f = curFrame) { const restore = camHide(); try { renderCameraRaw(rend, camObj, cam, mode, w, h, vx, vy, f); } finally { restore(); } }
+function renderCameraRaw(rend, camObj, cam, mode, w, h, vx = 0, vy = 0, f = curFrame) {
   if (lensActive(camObj, mode)) { try { renderLens(rend, camObj, cam, mode, w, h, vx, vy, f); return; } catch (e) { console.warn('lensFX', e); project.settings.lensFXGlobal = false; } }
   renderScene(rend, cam, mode, w, h, vx, vy);
 }
@@ -4186,7 +4198,7 @@ function renderPip(w, h) {
   const vr = $('#vpwrap').getBoundingClientRect(), br2 = body.getBoundingClientRect();
   const x = br2.left - vr.left, yb = h - (br2.top - vr.top) - ph; pipRect = { x, y: br2.top - vr.top - 40, w: pw, h: ph + 40 };
   setHelpersVisible(false);
-  renderScene(renderer, r.rig.cam, renderMode, pw, ph, x, yb);
+  { const restore = camHide(); renderScene(renderer, r.rig.cam, renderMode, pw, ph, x, yb); restore(); }
   renderer.setViewport(0, 0, w, h);
   setHelpersVisible(true);
 }
@@ -4661,7 +4673,7 @@ function roadFollow(road, obj, kmh, lane, dir, startPct, fStart, silent) {
   if (silent) return; commit(); tlDirty = true; pathVer = -1; bump(); toast(`${obj.name} anda pela estrada: frames ${f0}–${out.px[out.px.length - 1].f}`);
 }
 function initRoadUI() {
-  insp.addEventListener('change', e => { const o = sel && getObj(sel); if (o && e.target.id === 'consGround') { o.cons.ground = e.target.checked ? undefined : false; bump(); commit(); } });
+  insp.addEventListener('change', e => { const o = sel && getObj(sel); if (o && e.target.id === 'consGround') { o.cons.ground = e.target.checked ? undefined : false; bump(); commit(); } if (o && e.target.id === 'camHid') { o.camHidden = e.target.checked || undefined; bump(); commit(); } if (o && e.target.id === 'frameSel') { const [x, y] = e.target.value.split(',').map(Number); o.cons.frameX = x; o.cons.frameY = y; if (!o.cons.aim) toast('O enquadramento nos terços funciona quando a câmera mira um objeto (Mirar em)'); bump(); commit(); } });
   insp.addEventListener('click', e => {
     const o = sel && getObj(sel), b = e.target.closest('button'); if (!o || !b || o.type !== 'roadpath') return;
     if (b.dataset.rpre) { const pr = ROAD_PRESETS[b.dataset.rpre]; o.params.pts = pr.pts.map(a => a.slice()); o.params.closed = !!pr.closed; o.params.bridge = !pr.noBridge; roadSelPt = -1; rebuildRoad(o, true); }
@@ -4744,7 +4756,7 @@ const GEAR = {
   russian: { lb: 'Russian Arm (U-Crane) em Mercedes', ic: '🚙', grp: 'Veículo', car: true, arm: 4.3, carVmax: 150, src: 'U-Crane / Russian Arm: braço padrão 4,3 m (opcional até 6,5 m), tilt ±45°, pan 360°; operação até 150 km/h. Carro: Mercedes GLE63s (4,94 × 2,01 × 1,78 m).' },
   carmount: { lb: 'Car mount (ventosa / hostess tray)', ic: '🧲', grp: 'Veículo', car: true, carVmax: 100, src: 'Rig preso à carroceria (ventosas, hostess tray, hood mount). Limite típico ~100 km/h — confirme com o rigger.' },
   drone: { lb: 'Drone DJI Inspire 3', ic: '🚁', grp: 'Aéreo', air: true, hMin: 0.5, hMax: 120, vMax: 26.1, vUp: 8, vDown: 8, src: 'Inspire 3: 94 km/h na horizontal, sobe/desce 8 m/s, 0,71 × 0,50 m. Altura limitada a 120 m (limite usual de regulamentação).' },
-  fpv: { lb: 'Drone FPV de cinema', ic: '🛸', grp: 'Aéreo', air: true, hMin: 0.2, hMax: 120, vMax: 33, vUp: 15, vDown: 15, src: 'FPV de cinema (câmera cine leve): até ~120 km/h, manobras rápidas (típico). Cinewhoop: bem mais lento (~15 m/s).' },
+  fpv: { lb: 'Drone FPV de cinema', ic: '🛸', grp: 'Aéreo', air: true, hMin: 0.2, hMax: 120, vMax: 39, vUp: 15, vDown: 15, src: 'FPV de cinema com câmera cine leve (ex.: RED Komodo): até ~140 km/h em perseguição (típico). Cinewhoop: bem mais lento (~15 m/s).' },
   cable: { lb: 'Cable cam', ic: '🚡', grp: 'Aéreo', hMin: 2, hMax: 40, vMax: 10, line: true, src: 'Câmera em cabo entre duas torres: trajeto em linha reta, até ~10 m/s (típico).' },
 };
 const GEAR_GROUPS = ['Livre', 'Fixo', 'Chão', 'Gruas', 'Veículo', 'Aéreo'];
@@ -4763,22 +4775,26 @@ function groundBelow(p) { const g = typeof groundAt === 'function' && _roadRelie
 function gearCheck(o, type) {
   const G = GEAR[type || (o.gear && o.gear.type)]; if (!G || !G.lb || type === 'none') return { ok: true, items: [], stats: {} };
   const fps = project.fps, N = project.duration, P = [], items = [];
+  // com decupagem: só os trechos em que esta câmera está no ar (cada plano é um take)
+  const onAir = (project.shots || []).filter(s => s.cam === o.id), air = (f) => !onAir.length || onAir.some(s => f >= s.start && f <= s.end);
   const saved = o.gear; if (type && (!o.gear || o.gear.type !== type)) o.gear = Object.assign({}, o.gear || {}, { type });
   for (let f = 0; f <= N; f++) P.push(camWorld(o, f, new THREE.Vector3()));
   let hMin = 1e9, hMax = -1e9, vMax = 0, vUpMax = 0, vDnMax = 0, rMin = 1e9, rMax = 0, teleMax = 0, carV = 0, prevR = null, moved = 0;
   const bad = (k, f) => { const it = items.find(i => i.k === k); if (it) { it.f1 = f; it.n++; } else items.push({ k, f0: f, f1: f, n: 1 }); };
   const veh = G.car ? getObj((o.gear && o.gear.veh) || o.cons.mount) : null;
   for (let f = 0; f <= N; f++) {
+    if (!air(f)) { prevR = null; continue; }
     const p = P[f], h = p.y - groundBelow(p); hMin = Math.min(hMin, h); hMax = Math.max(hMax, h);
-    if (f > 0) { const d = p.distanceTo(P[f - 1]) * fps, vy = (p.y - P[f - 1].y) * fps; vMax = Math.max(vMax, d); vUpMax = Math.max(vUpMax, vy); vDnMax = Math.max(vDnMax, -vy); moved += p.distanceTo(P[f - 1]);
+    if (f > 0 && air(f - 1)) { const d = p.distanceTo(P[f - 1]) * fps, vy = (p.y - P[f - 1].y) * fps; vMax = Math.max(vMax, d); vUpMax = Math.max(vUpMax, vy); vDnMax = Math.max(vDnMax, -vy); moved += p.distanceTo(P[f - 1]);
       if (G.vMax && d > G.vMax * 1.02) bad('v', f); if (G.vUp && vy > G.vUp * 1.02) bad('vup', f); if (G.vDown && -vy > G.vDown * 1.02) bad('vdn', f); }
     if (G.hMin != null && h < G.hMin - 0.01) bad('hmin', f); if (G.hMax != null && h > G.hMax + 0.01) bad('hmax', f);
     const pv = gearPivot(o, f, _gv);
     if (pv && (G.reach || G.arm)) { const r = p.distanceTo(pv); rMin = Math.min(rMin, r); rMax = Math.max(rMax, r); const [a, b] = G.reach || [0, G.arm]; if (r < a - 0.05) bad('rmin', f); if (r > b + 0.05) bad('rmax', f); if (G.tele && prevR != null) { const tv = Math.abs(r - prevR) * fps; teleMax = Math.max(teleMax, tv); if (tv > G.tele * 1.02) bad('tele', f); } prevR = r; }
-    if (veh && f > 0) { const a = worldPos(veh, f, _gv2).clone(), b = worldPos(veh, f - 1, new THREE.Vector3()); const kmh = a.distanceTo(b) * fps * 3.6; carV = Math.max(carV, kmh); if (kmh > G.carVmax * 1.02) bad('car', f); }
+    if (veh && f > 0 && air(f - 1)) { const a = worldPos(veh, f, _gv2).clone(), b = worldPos(veh, f - 1, new THREE.Vector3()); const kmh = a.distanceTo(b) * fps * 3.6; carV = Math.max(carV, kmh); if (kmh > G.carVmax * 1.02) bad('car', f); }
   }
+  if (hMin > 1e8) { hMin = hMax = 0; }
   if (G.still && moved > 0.05) items.push({ k: 'still', f0: 0, f1: N, n: 1 });
-  if (G.travel) { let span = 0; for (const p of P) span = Math.max(span, p.distanceTo(P[0])); if (span > G.travel + 0.02) items.push({ k: 'travel', f0: 0, f1: N, n: 1, v: span }); }
+  if (G.travel) { let span = 0; for (const p of P.filter((_, f) => air(f))) span = Math.max(span, p.distanceTo(P[0])); if (span > G.travel + 0.02) items.push({ k: 'travel', f0: 0, f1: N, n: 1, v: span }); }
   if (G.car && !veh) items.push({ k: 'nocar', f0: 0, f1: N, n: 1 });
   if (G.base && !(o.gear && o.gear.base)) items.push({ k: 'nobase', f0: 0, f1: N, n: 1 });
   o.gear = saved;
@@ -4796,7 +4812,7 @@ const GEAR_MSG = {
 function gearCheckHTML(o) {
   const G = GEAR[o.gear && o.gear.type]; if (!G || o.gear.type === 'none') return '';
   const R = gearCheck(o), s = R.stats, fps = project.fps, t = f => (f / fps).toFixed(1) + 's';
-  let h = `<div class="hint" style="margin:6px 0 2px">Ao longo da cena: altura ${s.hMin.toFixed(2)}–${s.hMax.toFixed(2)} m · vel. máx. ${(s.vMax * 3.6).toFixed(1)} km/h${s.rMax ? ` · alcance ${s.rMin.toFixed(2)}–${s.rMax.toFixed(2)} m` : ''}${s.carV ? ` · carro até ${s.carV.toFixed(0)} km/h` : ''}</div>`;
+  let h = `<div class="hint" style="margin:6px 0 2px">${(project.shots || []).some(s => s.cam === o.id) ? 'Nos planos em que está no ar' : 'Ao longo da cena'}: altura ${s.hMin.toFixed(2)}–${s.hMax.toFixed(2)} m · vel. máx. ${(s.vMax * 3.6).toFixed(1)} km/h${s.rMax ? ` · alcance ${s.rMin.toFixed(2)}–${s.rMax.toFixed(2)} m` : ''}${s.carV ? ` · carro até ${s.carV.toFixed(0)} km/h` : ''}</div>`;
   if (R.ok) h += `<div class="hint" style="color:#6cc86a;margin:4px 0">✓ Movimento possível com este equipamento.</div>`;
   else h += R.items.map(it => `<div class="hint" style="color:#ff8a80;margin:3px 0">⚠ ${GEAR_MSG[it.k](G, s, it)}${it.k !== 'still' && it.k !== 'nocar' && it.k !== 'nobase' && it.k !== 'travel' ? ` <span style="color:var(--tx3)">(${t(it.f0)}–${t(it.f1)})</span>` : ''}</div>`).join('');
   return h;
@@ -4806,7 +4822,7 @@ function gearSectionHTML(o) {
   let sel2 = '<select id="gearSel">'; for (const g of GEAR_GROUPS) { sel2 += `<optgroup label="${g}">` + Object.entries(GEAR).filter(([, v]) => v.grp === g).map(([k, v]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${v.ic} ${v.lb}</option>`).join('') + '</optgroup>'; } sel2 += '</select>';
   let h = `<div class="prow wide"><span class="lb">Equipamento</span>${sel2}</div>`;
   if (G.src) h += `<div class="hint" style="margin-top:2px">📋 ${G.src}</div>`;
-  if (G.base) h += `<div class="btnrow"><button data-gear-act="base">📍 Base atrás da câmera (frame atual)</button></div>`;
+  if (G.base) h += `<div class="btnrow"><button data-gear-act="base">📍 Base atrás da câmera (frame atual)</button><button data-gear-act="opt">🎯 Otimizar posição da base</button></div>`;
   if (G.car) h += `<div class="btnrow"><button data-gear-act="car">${G.car && cur === 'russian' ? '🚙 Criar carro de câmera com Russian Arm' : '🔗 Montar no carro selecionado'}</button></div>`;
   h += gearCheckHTML(o);
   h += `<div class="btnrow"><button data-gear-act="suggest">✨ Sugerir equipamento para este movimento</button></div>`;
@@ -4952,7 +4968,25 @@ function initGearUI() {
     if (a === 'base') { placeGearBase(o); bump(); commit(); renderInspector(); }
     if (a === 'car') { if (o.gear && o.gear.type === 'russian') createCameraCar(o); else { const so = project.objects.find(x => x.id !== o.id && ASSETS[x.type].pilot === 'car'); if (!so) return toast('Adicione um carro primeiro'); convertMount(o, so.id); o.cons.mount = so.id; bump(); commit(); renderInspector(); } }
     if (a === 'suggest') suggestGear(o);
+    if (a === 'opt') { if (optimizeGearBase(o)) { bump(); commit(); renderInspector(); toast('Base posicionada: braço com o mínimo de telescópio, fora da pista'); } else toast('Nenhuma posição de base alcança o movimento inteiro — encurte o movimento'); }
   });
+}
+/* base da grua otimizada: braço o mais "fixo" possível (pouco telescópio), fora da pista e dentro do alcance */
+function optimizeGearBase(o) {
+  const G = GEAR[o.gear && o.gear.type]; if (!G || !G.base) return false;
+  const onAir = (project.shots || []).filter(s => s.cam === o.id), fr = []; for (let f = 0; f <= project.duration; f += 2) if (!onAir.length || onAir.some(s => f >= s.start && f <= s.end)) fr.push(f);
+  const P = fr.map(f => camWorld(o, f, new THREE.Vector3())); if (!P.length) return false;
+  const c = P.reduce((a, p) => a.add(p), new THREE.Vector3()).multiplyScalar(1 / P.length), roads = roadsWorld();
+  const offRoad = (x, z) => !roads.some(R => R.S.some(s => (s.x - x) ** 2 + (s.z - z) ** 2 < (R.E + 1.5) ** 2));
+  let best = null, R = G.reach[1];
+  for (let dx = -R; dx <= R; dx += 0.5) for (let dz = -R; dz <= R; dz += 0.5) {
+    const x = c.x + dx, z = c.z + dz; if (!offRoad(x, z)) continue; const gy = groundBelow(new THREE.Vector3(x, 0, z)), pv = new THREE.Vector3(x, gy + G.pivotH, z);
+    let mn = 1e9, mx = 0, tele = 0, prev = null; for (let i = 0; i < P.length; i++) { const r = P[i].distanceTo(pv); mn = Math.min(mn, r); mx = Math.max(mx, r); if (prev != null && fr[i] - fr[i - 1] === 2) tele = Math.max(tele, Math.abs(r - prev) * project.fps / 2); prev = r; }
+    if (mn < G.reach[0] + 0.1 || mx > G.reach[1] - 0.1) continue;
+    const score = tele + (mx - mn) * 0.05; if (!best || score < best.score) best = { score, x, z, gy };
+  }
+  if (!best) return false;
+  o.gear.base = { x: +best.x.toFixed(3), y: +best.gy.toFixed(3), z: +best.z.toFixed(3), yaw: 0 }; return true;
 }
 
 /* ============================================================
@@ -5034,6 +5068,7 @@ const SPEED_PRESETS = {
   launch: { lb: 'Arrancar 0 → X em T s', f: (v, T) => [{ t: 0, v: 0 }, { t: T, v }] },
   brake: { lb: 'Frear X → 0 em T s', f: (v, T, D) => [{ t: 0, v }, { t: Math.max(0, D - T), v }, { t: D, v: 0 }] },
   pass: { lb: 'Passa acelerando (X → X+40%)', f: (v, T, D) => [{ t: 0, v }, { t: D, v: v * 1.4 }] },
+  real: { lb: 'Pilotagem realista (freia nas curvas, X = vel. máx.)', f: null },
   stopgo: { lb: 'Chega, para 1 s e sai', f: (v, T, D) => [{ t: 0, v }, { t: D * 0.35, v: 0 }, { t: D * 0.35 + 1, v: 0 }, { t: D, v }] },
 };
 function speedSectionHTML(o) {
@@ -5072,6 +5107,7 @@ function initSpeedUI() {
     if (b.dataset.spdel != null) { o.speedProf.splice(+b.dataset.spdel, 1); commit(); renderInspector(); }
     if (b.dataset.spadd) { const od = odometer(o), f = clamp(Math.round(curFrame), 0, project.duration); (o.speedProf = o.speedProf || []).push({ t: +(f / project.fps).toFixed(2), v: +(od.speed[f] * 3.6).toFixed(1) }); o.speedProf.sort((a, c) => a.t - c.t); commit(); renderInspector(); }
     if (b.dataset.spread) { readProfile(o); commit(); renderInspector(); }
+    if (b.dataset.spfill && $('#spPre').value === 'real') { const P2 = realisticProfile(o, { vMax: +$('#spX').value || 160, v0: odometer(o).speed[0] * 3.6 || 100 }); if (!P2) return toast('Precisa de uma trajetória (ex.: Animar ao longo da estrada)'); o.speedProf = P2; commit(); renderInspector(); return; }
     if (b.dataset.spfill) { const pr = SPEED_PRESETS[$('#spPre').value]; o.speedProf = pr.f(+$('#spX').value || 60, +$('#spT').value || 3, project.duration / project.fps).map(p => ({ t: +p.t.toFixed(2), v: +p.v.toFixed(1) })); commit(); renderInspector(); }
     if (b.dataset.spapply) applySpeedProfile(o);
   });
@@ -5086,6 +5122,221 @@ function updateSpeedHud(f) {
   if (pilot.on && pilot.id === o.id) { speedHud.style.display = 'block'; speedHud.textContent = `🎮 ${fmtV(Math.abs(pilot.s.v))} · ${fmtKm(pilot.s.dist || 0)}`; return; }
   const od = odometer(o), i = clamp(Math.round(f), 0, project.duration); if (od.maxV < 0.01) { speedHud.style.display = 'none'; return; }
   speedHud.style.display = 'block'; speedHud.innerHTML = `${ASSETS[o.type].icon} <span style="font-size:15px">${fmtV(od.speed[i])}</span> <span style="color:#9aa0a6;font-weight:500">· ${fmtKm(od.dist[i])} percorridos</span>`;
+}
+/* ---------- pilotagem realista: velocidade limitada pela curva (aderência) e por aceleração/frenagem ---------- */
+function realisticProfile(o, opt = {}) {
+  const vMax = (opt.vMax ?? 160) / 3.6, aLat = (opt.aLat ?? 0.9) * 9.81, aAcc = (opt.aAcc ?? 0.45) * 9.81, aBrk = (opt.aBrk ?? 0.95) * 9.81, v0 = (opt.v0 ?? 100) / 3.6;
+  const { pts, hasY } = pathPolyline(o); if (pts.length < 3) return null;
+  // reamostra a cada 1 m
+  const R = [pts[0]], D = [0]; let acc = 0, tot = 0; for (let i = 1; i < pts.length; i++) { const d = hDist(pts[i - 1], pts[i], hasY); acc += d; tot += d; if (acc >= 1) { R.push(pts[i]); D.push(tot); acc = 0; } }
+  const n = R.length, vc = new Float64Array(n).fill(vMax);
+  for (let i = 3; i < n - 3; i++) { // raio pela variação de direção em ±3 m
+    const a = R[i - 3], b = R[i], c = R[i + 3], h1 = Math.atan2(b.x - a.x, b.z - a.z), h2 = Math.atan2(c.x - b.x, c.z - b.z); let dh = h2 - h1; while (dh > Math.PI) dh -= 2 * Math.PI; while (dh < -Math.PI) dh += 2 * Math.PI;
+    const k = Math.abs(dh) / Math.max(0.5, Math.hypot(c.x - a.x, c.z - a.z) / 2 * 2); vc[i] = Math.min(vMax, k > 1e-5 ? Math.sqrt(aLat / k) : vMax);
+  }
+  const v = new Float64Array(n); v[0] = Math.min(v0, vc[0]);
+  for (let i = 1; i < n; i++) v[i] = Math.min(vc[i], Math.sqrt(v[i - 1] * v[i - 1] + 2 * aAcc * (D[i] - D[i - 1])));
+  for (let i = n - 2; i >= 0; i--) v[i] = Math.min(v[i], Math.sqrt(v[i + 1] * v[i + 1] + 2 * aBrk * (D[i + 1] - D[i])));
+  // perfil no tempo (pontos a cada 0,25 s)
+  const prof = []; let t = 0, nextT = 0;
+  for (let i = 0; i < n - 1; i++) { if (t >= nextT) { prof.push({ t: +t.toFixed(3), v: +(v[i] * 3.6).toFixed(2) }); nextT += 0.25; } t += (D[i + 1] - D[i]) / Math.max(0.5, (v[i] + v[i + 1]) / 2); if (t > project.duration / project.fps + 0.5) break; }
+  return prof;
+}
+
+/* ============================================================
+   DECUPAGEM / MULTISHOT — controle dos planos da edição
+   Cada plano = { cam, start, end, name, notes } em frames da cena (ação contínua,
+   como várias câmeras filmando o mesmo take). Cartões com miniatura, lente,
+   equipamento, enquadramento, duração; tocar/loopar um plano; dividir; exportar.
+   ============================================================ */
+let thumbRend = null; const shotThumbs = new Map();
+function shotThumb(sh) {
+  const o = getObj(sh.cam), r = o && rt.get(o.id); if (!r) return '';
+  const mid = Math.round((sh.start + sh.end) / 2), key = sh.cam + ':' + mid + ':' + animVer + ':' + project.aspect;
+  if (shotThumbs.has(key)) return shotThumbs.get(key);
+  try {
+    const a = aspectNum(), W = 224, H = Math.round(W / a);
+    if (!thumbRend) { thumbRend = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }); thumbRend.outputColorSpace = renderer.outputColorSpace; thumbRend.toneMapping = renderer.toneMapping; thumbRend.shadowMap.enabled = renderer.shadowMap.enabled; }
+    thumbRend.setSize(W, H, false);
+    applyFrame(mid); setHelpersVisible(false);
+    const restore = camHide(); renderScene(thumbRend, r.rig.cam, renderMode === 'shaded' ? 'shaded' : renderMode, W, H); restore();
+    const url = thumbRend.domElement.toDataURL('image/jpeg', 0.8); shotThumbs.set(key, url); return url;
+  } catch (e) { console.warn(e); return ''; }
+}
+function frameLabel(c) { const x = +(c.frameX || 0), y = +(c.frameY || 0); if (!x && !y) return 'centro'; return 'terço' + (y < 0 ? ' inferior' : y > 0 ? ' superior' : '') + (x < 0 ? ' esquerdo' : x > 0 ? ' direito' : ''); }
+function shotInfo(sh, i) {
+  const o = getObj(sh.cam), fps = project.fps, mid = Math.round((sh.start + sh.end) / 2), dur = (sh.end - sh.start + 1) / fps;
+  const focal = getVal(o, 'focal', mid), G = o.gear && GEAR[o.gear.type];
+  return { o, dur, focal, gear: G && o.gear.type !== 'none' ? G.lb : 'livre', frame: frameLabel(o.cons), name: sh.name || o.name, i };
+}
+function seqHTML() {
+  normalizeShots(); const S = project.shots, fps = project.fps, cams = project.objects.filter(o => o.type === 'camera');
+  const total = (project.duration + 1) / fps, avg = S.length ? S.reduce((a, s) => a + (s.end - s.start + 1), 0) / S.length / fps : 0;
+  const opt = (cur) => cams.map(c => `<option value="${c.id}" ${c.id === cur ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+  let h = `<div class="hint" style="margin-top:0">${S.length ? `<b>${S.length} planos</b> · duração média ${avg.toFixed(2).replace('.', ',')} s · filme de ${total.toFixed(1).replace('.', ',')} s a ${fps} fps.` : 'Sem planos: a edição usa só a câmera ativa.'} Todas as câmeras filmam a mesma ação (multicâmera): cada plano escolhe qual está no ar e em que trecho.</div>
+  <div class="btnrow" style="margin:8px 0 12px"><button class="pri" data-sq="play">▶ Tocar edição</button><button data-sq="split" ${cams.length ? '' : 'disabled'}>✂ Cortar no frame ${curFrame}</button><button data-sq="even" ${cams.length > 1 ? '' : 'disabled'}>Um plano por câmera</button><button data-sq="txt" ${S.length ? '' : 'disabled'}>⬇ Decupagem (.txt)</button><button data-sq="csv" ${S.length ? '' : 'disabled'}>⬇ Planilha (.csv)</button><button data-sq="clear" ${S.length ? '' : 'disabled'}>Limpar</button></div>`;
+  h += `<div style="display:flex;flex-direction:column;gap:8px">` + S.map((sh, i) => {
+    const I = shotInfo(sh, i), col = camColor(sh.cam), cur = curFrame >= sh.start && curFrame <= sh.end;
+    return `<div data-shot="${i}" style="display:grid;grid-template-columns:150px 1fr;gap:10px;padding:8px;border-radius:10px;border:1px solid ${cur ? '#8bb6ff' : 'var(--line)'};background:${cur ? 'rgba(122,167,255,.08)' : 'var(--bg2,#17181b)'}">
+      <div style="position:relative;cursor:pointer" data-sqgo="${i}" title="Ir para o plano"><img src="${shotThumb(sh)}" style="width:150px;border-radius:6px;display:block;background:#000;aspect-ratio:${aspectNum()}"><span style="position:absolute;left:6px;top:6px;background:${col};color:#111;font:700 11px Inter;padding:1px 6px;border-radius:4px">${i + 1}</span><span style="position:absolute;right:6px;bottom:6px;background:rgba(0,0,0,.65);color:#fff;font:600 10.5px Inter;padding:1px 5px;border-radius:4px">${I.dur.toFixed(2).replace('.', ',')} s</span></div>
+      <div style="min-width:0">
+        <div style="display:flex;gap:6px;align-items:center"><input type="text" data-sqk="name" data-i="${i}" value="${esc(sh.name || I.o.name)}" style="flex:1;font-weight:600"><button class="ghost" data-sqloop="${i}" title="Tocar este plano em loop">⟲</button><button class="ghost" data-sqdup="${i}" title="Dividir ao meio">⧉</button><button class="ghost" data-sqdel="${i}" title="Remover plano">✕</button></div>
+        <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr;gap:6px;margin-top:6px;font-size:11px"><label style="color:var(--tx3)">Câmera<select data-sqk="cam" data-i="${i}" style="width:100%">${opt(sh.cam)}</select></label><label style="color:var(--tx3)">Entra (s)<input type="number" step="${(1 / fps).toFixed(4)}" data-sqk="start" data-i="${i}" value="${(sh.start / fps).toFixed(2)}" style="width:100%"></label><label style="color:var(--tx3)">Sai (s)<input type="number" step="${(1 / fps).toFixed(4)}" data-sqk="end" data-i="${i}" value="${((sh.end + 1) / fps).toFixed(2)}" style="width:100%"></label></div>
+        <div class="hint" style="margin:6px 0 4px">🎞 ${I.focal.toFixed(0)} mm · ${esc(I.gear)} · alvo no ${I.frame}${I.o.cons.shake ? ` · tremor ${I.o.cons.shake}°` : ''} · frames ${sh.start}–${sh.end}</div>
+        <input type="text" data-sqk="notes" data-i="${i}" value="${esc(sh.notes || '')}" placeholder="Notas do plano (ação, intenção, prompt para a IA…)" style="width:100%;font-size:11px">
+      </div></div>`;
+  }).join('') + `</div>`;
+  return h;
+}
+let seqLoop = null;
+function seqText(csv) {
+  const fps = project.fps, rows = project.shots.map((sh, i) => { const I = shotInfo(sh, i); return [i + 1, I.name, (sh.start / fps).toFixed(2), ((sh.end + 1) / fps).toFixed(2), I.dur.toFixed(2), I.o.name, I.focal.toFixed(0) + 'mm', I.gear, I.frame, sh.notes || '']; });
+  if (csv) return ['Plano;Nome;Entra (s);Sai (s);Duração (s);Câmera;Lente;Equipamento;Enquadramento;Notas', ...rows.map(r => r.map(x => String(x).replace(/;/g, ',')).join(';'))].join('\n');
+  return `DECUPAGEM — ${project.name}\n${project.shots.length} planos · ${((project.duration + 1) / fps).toFixed(1)} s @ ${fps} fps · ${project.aspect}\n\n` + rows.map(r => `${String(r[0]).padStart(2, '0')}. ${r[1]}  [${r[2]}–${r[3]} s · ${r[4]} s]\n    ${r[5]} · ${r[6]} · ${r[7]} · alvo no ${r[8]}${r[9] ? '\n    ' + r[9] : ''}`).join('\n\n');
+}
+function openSequencer() {
+  openModal('🎬 Decupagem · multishot', seqHTML(), m => {
+    $('#modalBox').style.width = 'min(860px,96vw)'; closeModal.onClose = () => { $('#modalBox').style.width = ''; applyFrame(curFrame); bump(); };
+    const rerender = () => { m.querySelector('.mb').innerHTML = seqHTML(); tlDirty = true; renderViewSel(); applyFrame(curFrame); bump(); };
+    m.addEventListener('change', e => {
+      const t = e.target, k = t.dataset.sqk; if (!k) return; const sh = project.shots[+t.dataset.i]; if (!sh) return;
+      if (k === 'cam') sh.cam = t.value; else if (k === 'start') sh.start = Math.round(+t.value * project.fps); else if (k === 'end') sh.end = Math.round(+t.value * project.fps) - 1; else sh[k] = t.value;
+      if (k === 'start' || k === 'end') { const i = +t.dataset.i, S = project.shots; if (k === 'start' && S[i - 1]) S[i - 1].end = Math.max(S[i - 1].start, sh.start - 1); if (k === 'end' && S[i + 1]) S[i + 1].start = Math.min(S[i + 1].end, sh.end + 1); }
+      normalizeShots(); commit(); if (k !== 'name' && k !== 'notes') rerender(); else tlDirty = true;
+    });
+    m.addEventListener('click', e => {
+      const b = e.target.closest('[data-sq],[data-sqgo],[data-sqloop],[data-sqdup],[data-sqdel]'); if (!b) return; const S = project.shots, cams = project.objects.filter(o => o.type === 'camera');
+      if (b.dataset.sqgo != null) { const sh = S[+b.dataset.sqgo]; setFrame(sh.start); setView(sh.cam); rerender(); return; }
+      if (b.dataset.sqloop != null) { const sh = S[+b.dataset.sqloop]; seqLoop = { a: sh.start, b: sh.end }; setFrame(sh.start); setView('cam'); closeModal(); if (!playing) togglePlay(); toast(`Plano ${+b.dataset.sqloop + 1} em loop — Esc ou clique na timeline para sair`); return; }
+      if (b.dataset.sqdup != null) { const i = +b.dataset.sqdup, sh = S[i], mid = Math.round((sh.start + sh.end) / 2); if (sh.end - sh.start < 2) return; S.splice(i + 1, 0, { cam: sh.cam, start: mid + 1, end: sh.end, name: (sh.name || '') + ' (b)', notes: sh.notes }); sh.end = mid; commit(); rerender(); return; }
+      if (b.dataset.sqdel != null) { const i = +b.dataset.sqdel; const [x] = S.splice(i, 1); if (S[i - 1]) S[i - 1].end = x.end; else if (S[i]) S[i].start = x.start; commit(); rerender(); return; }
+      const a = b.dataset.sq;
+      if (a === 'play') { seqLoop = null; setView('cam'); setFrame(0); closeModal(); if (!playing) togglePlay(); }
+      if (a === 'split') { const f = curFrame; normalizeShots(); if (!S.length) { const c0 = project.activeCamera || cams[0].id, c1 = (cams.find(c => c.id !== c0) || cams[0]).id; project.shots = f > 0 ? [{ cam: c0, start: 0, end: f - 1 }, { cam: c1, start: f, end: project.duration }] : [{ cam: c0, start: 0, end: project.duration }]; } else { const i = S.findIndex(x => f > x.start && f <= x.end); if (i >= 0) { const cur = S[i], idx = cams.findIndex(c => c.id === cur.cam), nx = cams[(idx + 1) % cams.length].id; S.splice(i + 1, 0, { cam: nx, start: f, end: cur.end }); cur.end = f - 1; } } commit(); rerender(); }
+      if (a === 'even') { const n = cams.length, D = project.duration + 1; project.shots = cams.map((c, i) => ({ cam: c.id, start: Math.round(i * D / n), end: Math.round((i + 1) * D / n) - 1, name: c.name })); commit(); rerender(); }
+      if (a === 'clear') { project.shots = []; commit(); rerender(); }
+      if (a === 'txt') saveFile((project.name || 'decupagem') + ' - decupagem.txt', seqText(false), seqText(false));
+      if (a === 'csv') saveFile((project.name || 'decupagem') + ' - planos.csv', '﻿' + seqText(true), seqText(true));
+    });
+  });
+}
+$('#bShots').onclick = openSequencer; $('#bShots').innerHTML = '🎬 Decupagem'; $('#bShots').title = 'Decupagem / multishot: planos, câmeras, cortes';
+/* HUD do plano no ar + navegação [ ] entre planos */
+const shotHud = document.createElement('div'); shotHud.style.cssText = 'position:absolute;right:12px;top:12px;z-index:5;pointer-events:none;font:600 11.5px Inter,sans-serif;color:#e8eaed;background:rgba(20,21,24,.78);border:1px solid rgba(255,255,255,.08);padding:5px 9px;border-radius:8px;display:none;white-space:nowrap';
+renderer.domElement.parentElement.appendChild(shotHud);
+function updateShotHud(f) {
+  const S = project.shots; if (!S || !S.length || !viewIsCam() || pilot.on) { shotHud.style.display = 'none'; return; }
+  const i = S.findIndex(s => f >= s.start && f <= s.end); if (i < 0) { shotHud.style.display = 'none'; return; }
+  const I = shotInfo(S[i], i), left = (S[i].end - f) / project.fps;
+  shotHud.style.display = 'block'; shotHud.innerHTML = `<span style="color:${camColor(S[i].cam)}">■</span> PLANO ${i + 1}/${S.length} · ${esc(I.name)} · ${I.focal.toFixed(0)} mm <span style="color:#9aa0a6;font-weight:500">· ${left.toFixed(1)} s</span>`;
+  if (pipRect) shotHud.style.right = '330px'; else shotHud.style.right = '12px';
+}
+function seqTick(f) { if (seqLoop && playing && (f > seqLoop.b || f < seqLoop.a)) setFrame(seqLoop.a); updateShotHud(f); }
+addEventListener('keydown', e => {
+  if (e.target.matches && e.target.matches('input,textarea,select')) return; const S = project.shots;
+  if (e.key === 'Escape') seqLoop = null;
+  if ((e.key === ']' || e.key === '[') && S && S.length) { const i = S.findIndex(s => curFrame >= s.start && curFrame <= s.end), j = clamp(i + (e.key === ']' ? 1 : -1), 0, S.length - 1); setFrame(S[j].start); e.preventDefault(); }
+});
+
+tlc.addEventListener('pointerdown', () => { seqLoop = null; }, true);
+
+/* ============================================================
+   EXEMPLO: COMERCIAL ESPORTIVO 30 s (24 fps, multicâmera)
+   Estrada de serra com subidas, grampo e descida; 911 com pilotagem realista
+   (freia nas curvas, limite de aderência); 12 planos com equipamento real,
+   composição nos terços e leve câmera na mão.
+   ============================================================ */
+const COMM_ROAD = [[0, 0, -230], [0, 0, -60], [25, 2, 40], [90, 6, 110], [170, 12, 140], [240, 18, 120], [275, 20, 70], [260, 20, 20], [215, 17, 10], [160, 12, -20], [130, 8, -80], [150, 5, -140], [120, 3, -200], [60, 1, -250], [-30, 0, -262], [-260, 0, -262]];
+function commScene() {
+  const P = newProject(); P.name = 'Comercial esportivo — 911 na serra'; P.fps = 24; P.duration = 719; P.aspect = '2.39:1';
+  Object.assign(P.settings, { sky: '#7fa6cf', bg2: '#f0d6b0', ground: '#6b7356', grid: false, groundShow: true, groundOpacity: 1, fog: 0.0022, sunAz: 250, sunEl: 20, sunInt: 2.1, groundSize: 3000, exposure: 1.05 });
+  loadProjectData(P);
+  const add = (type, opts) => { const o = addObject(type, Object.assign({ silent: true }, opts)); return o; };
+  // cenário
+  const road = add('roadpath', { name: 'Estrada da serra', params: Object.assign(defaultParams('roadpath'), { lanes: 2, laneW: 3.5, shoulder: 1.2, guard: true, center: 'double', bridge: false, asphalt: '#34363a' }) });
+  road.params.pts = COMM_ROAD.map(a => a.slice()); buildRuntime(road);
+  add('terrain', { name: 'Montanhas', params: Object.assign(defaultParams('terrain'), { size: 2000, height: 120, feature: 260, flat: 360, color: '#66704f', seed: 4 }), base: { px: 30, py: -0.06, pz: -60 } });
+  applyFrame(0);
+  const nearRoad = (x, z, m) => { const L = roadsWorld(); for (const R of L) for (const s of R.S) if ((s.x - x) ** 2 + (s.z - z) ** 2 < m * m) return true; return false; };
+  const rnd = mulberry(77);
+  for (let i = 0; i < 60; i++) { const x = -260 + rnd() * 560, z = -330 + rnd() * 520; if (nearRoad(x, z, 26)) continue; add(rnd() < 0.55 ? 'pine' : 'tree', { name: 'Árvore', params: Object.assign(defaultParams(rnd() < 0.55 ? 'pine' : 'tree'), { height: 8 + rnd() * 9, seed: (rnd() * 999) | 0 }), base: { px: x, pz: z, ry: rnd() * 360 } }); }
+  for (let i = 0; i < 16; i++) { const x = 150 + rnd() * 160, z = -40 + rnd() * 200; if (nearRoad(x, z, 18)) continue; add('rock', { name: 'Rocha', params: Object.assign(defaultParams('rock'), { size: 2 + rnd() * 5, seed: (rnd() * 999) | 0 }), base: { px: x, pz: z } }); }
+  // carro herói: Porsche 911, faixa da direita, pilotagem realista até 150 km/h
+  const car = add('realcar', { name: 'Porsche 911 (herói)', params: Object.assign(carDefaults('p911'), { modelName: CAR_DB.p911.name, color: '#c8102e' }) });
+  buildRuntime(car); roadFollow(road, car, 220, 1, 1, 0, 0, true); // traçado completo da estrada; o tempo vem do perfil abaixo
+  const drv = add('person', { name: 'Piloto', params: Object.assign(defaultParams('person'), { look: 'clothes', height: 1.72, shirt: '#1d1e22', pants: '#1d1e22', pose: 'sit' }) });
+  drv.cons.mount = car.id; drv.cons.ground = false; Object.assign(drv.base, { px: 0.36, py: -0.17, pz: -0.1 }); buildRuntime(drv);
+  car.speedProf = realisticProfile(car, { vMax: 150, v0: 112, aLat: 0.95 }); applySpeedProfile(car);
+  return { road, car };
+}
+function carState(car, f) {
+  const p = worldPos(car, f, new THREE.Vector3()), y = getVal(car, 'ry', f) * DEG;
+  return { p, fw: new THREE.Vector3(Math.sin(y), 0, Math.cos(y)), rt: new THREE.Vector3(-Math.cos(y), 0, Math.sin(y)), yaw: y };
+}
+function buildSportsCommercial() {
+  const { road, car } = commScene(), fps = 24, F = (s) => Math.round(s * fps);
+  const H = car.params.height, L = car.params.length;
+  const S = (f) => carState(car, clamp(f, 0, project.duration));
+  const smooth = (a, b, x) => { const t = clamp((x - a) / Math.max(1e-6, b - a), 0, 1); return t * t * (3 - 2 * t); };
+  // lado da tela para onde o carro aponta → deixa "ar" na frente (regra dos terços)
+  const lead = (C, f, yThird = 0) => { const st = S(f), v = st.p.clone().setY(st.p.y + 0.55).sub(C).normalize(), r = new THREE.Vector3().crossVectors(v, UP).normalize(), s = st.fw.dot(r); return { x: s > 0.25 ? -1 / 3 : s < -0.25 ? 1 / 3 : 0, y: yThird }; };
+  const body = (o, b, ls) => { const B = CAMERA_BODIES[b], Ls = LENS_SETS[ls]; o.params.body = b; o.params.sensorW = B.w; o.params.sensorH = B.h; o.params.lensSet = ls; o.params.squeeze = String(Ls.sq || 1); o.params.tstop = Ls.t; o.params.focusAuto = true; };
+  const mkCam = (name, focal, opts = {}) => { const c = addObject('camera', { silent: true, name, base: { px: 0, py: 1.5, pz: 0, rx: 0, ry: 0, rz: 0, focal } }); body(c, opts.body || 'alexa35', opts.lens || 'signature'); c.cons.shake = opts.shake ?? 0.25; c.cons.shakeFreq = opts.freq ?? 1.8; if (opts.aim !== false) { c.cons.aim = car.id; c.cons.aimH = 0.55; } return c; };
+  const bake = (c, f0, f1, fn) => { const T = { px: [], py: [], pz: [] }; for (let f = Math.max(0, f0 - 6); f <= Math.min(project.duration, f1 + 6); f++) { const u = clamp((f - f0) / Math.max(1, f1 - f0), 0, 1), p = fn(f, u); T.px.push({ f, v: p.x }); T.py.push({ f, v: p.y }); T.pz.push({ f, v: p.z }); } for (const ch in T) writeSamples(c, ch, T[ch], 'simplify', 0.003); c.base.px = T.px[0].v; c.base.py = T.py[0].v; c.base.pz = T.pz[0].v; };
+  const frameAt = (c, f, y = 0) => { const p = new THREE.Vector3(getVal(c, 'px', f), getVal(c, 'py', f), getVal(c, 'pz', f)); const l = lead(p, f, y); c.cons.frameX = l.x; c.cons.frameY = l.y; };
+  const shots = [];
+  const shot = (c, a, b, name, notes) => { shots.push({ cam: c.id, start: F(a), end: F(b) - 1, name, notes }); };
+  // ---- carro de câmera (Mercedes GLE63s + Russian Arm) com posições relativas ao herói por plano ----
+  const camcar = addObject('suv', { silent: true, name: 'Carro de câmera (Russian Arm)', params: Object.assign(defaultParams('suv'), { length: 4.94, width: 2.01, height: 1.78, color: '#17181b' }) });
+  camcar.camHidden = true;
+  const OFF = [[F(0), 0, 9.6], [F(5.5), 0, 9.6], [F(8), -3.5, 0.2], [F(12), -3.5, 0.2], [F(25), 0, -11.0], [F(30), 0, -11.0]]; // [frame, lateral (+ = direita do herói), à frente]
+  const offAt = (f) => { for (let i = 0; i < OFF.length - 1; i++) { const a = OFF[i], b = OFF[i + 1]; if (f <= b[0]) { const u = smooth(a[0], b[0], f); return [lerp(a[1], b[1], u), lerp(a[2], b[2], u)]; } } return OFF[OFF.length - 1].slice(1); };
+  { const T = { px: [], pz: [], ry: [] }; let prev = null; for (let f = 0; f <= project.duration; f++) { const st = S(f), [a, b] = offAt(f), p = st.p.clone().addScaledVector(st.rt, a).addScaledVector(st.fw, b); let y = st.yaw / DEG; if (prev != null) { while (y - prev > 180) y -= 360; while (y - prev < -180) y += 360; } prev = y; T.px.push({ f, v: p.x }); T.pz.push({ f, v: p.z }); T.ry.push({ f, v: y }); } for (const ch in T) writeSamples(camcar, ch, T[ch], 'simplify', ch === 'ry' ? 0.05 : 0.004); camcar.base.px = T.px[0].v; camcar.base.pz = T.pz[0].v; buildRuntime(camcar); }
+  const onArm = (c, x, y, z) => { c.cons.mount = camcar.id; c.gear = { type: 'russian', veh: camcar.id }; for (const ch of ['px', 'py', 'pz']) delete c.tracks[ch]; Object.assign(c.base, { px: x, py: y, pz: z }); };
+  // 1 · abertura aérea
+  { const A = S(F(2.4)), c = mkCam('01 Abertura · drone', 24, { body: 'inspire3', lens: 'dl', shake: 0.12 }); c.gear = { type: 'drone' };
+    bake(c, F(0), F(3), (f, u) => A.p.clone().addScaledVector(A.fw, lerp(30, 24, u)).addScaledVector(A.rt, lerp(17, 14, u)).setY(A.p.y + lerp(15, 10, u)));
+    frameAt(c, F(1.5), -1 / 3); shot(c, 0, 3, 'Abertura aérea', 'Drone desce devagar enquanto o 911 entra no quadro pela reta; carro no terço inferior.'); }
+  // 2 · frontal rasteiro no braço
+  { const c = mkCam('02 Frontal rasteiro · Russian Arm', 24, { shake: 0.3 }); onArm(c, -0.8, 0.45, -2.8); c.cons.frameX = 1 / 3; c.cons.frameY = 0;
+    shot(c, 3, 5.5, 'Frontal rasteiro', 'Câmera a 45 cm do asfalto, 7 m à frente; o carro avança no terço direito a 150 km/h.'); }
+  // 3 · roda (car mount no herói)
+  { const c = mkCam('03 Detalhe roda · car mount', 18, { aim: false, shake: 0.35, freq: 3 }); c.cons.mount = car.id; c.gear = { type: 'carmount' }; Object.assign(c.base, { px: car.params.width / 2 + 0.5, py: 0.34, pz: L * 0.3, ry: 10, rx: -4 });
+    shot(c, 18.25, 19.5, 'Detalhe da roda', 'Ventosa na lateral dianteira olhando para trás: roda girando, asfalto borrado.'); }
+  // 4 · tele lateral, tripé
+  { const A = S(F(6.8)), c = mkCam('04 Tele frontal · tripé 135 mm', 135, { shake: 0.06 }); c.gear = { type: 'tripod' }; const B = S(F(8.7)), p = B.p.clone().addScaledVector(B.rt, 2.5); p.y = B.p.y + 1.55; Object.assign(c.base, { px: p.x, py: p.y, pz: p.z });
+    frameAt(c, F(6.8), 0); shot(c, 5.5, 8, 'Tele na subida', 'Tripé no acostamento 60 m à frente: a 135 mm o carro vem crescendo na subida, compressão de tele.'); }
+  // 5 · capô olhando o piloto
+  { const c = mkCam('05 Capô · piloto', 18, { aim: false, shake: 0.2, freq: 2.6 }); c.cons.mount = car.id; c.gear = { type: 'carmount' }; Object.assign(c.base, { px: 0.15, py: H * 0.62 + 0.3, pz: L * 0.3, ry: 4, rx: -2 });
+    shot(c, 16.5, 18.25, 'Capô · piloto', 'Hood mount olhando o para-brisa; o céu e a serra passam no reflexo.'); }
+  // 6 · technocrane no grampo
+  { const A = S(F(15.4)), c = mkCam('06 Grampo · Technocrane', 40, { shake: 0.05 });
+    bake(c, F(12), F(16.5), (f, u) => A.p.clone().addScaledVector(A.rt, lerp(-9, -8.5, u)).addScaledVector(A.fw, lerp(-6, 0, smooth(0, 1, u))).setY(A.p.y + lerp(6, 1.6, smooth(0, 1, u))));
+    c.gear = { type: 'techno' }; buildRuntime(c); applyFrame(F(14)); frameAt(c, F(14.5), -1 / 3); shot(c, 12, 16.5, 'Grampo · grua', 'Technocrane no lado de dentro do grampo: desce de 6 m até 1,6 m enquanto o carro freia e contorna.'); }
+  // 7 · lado a lado
+  { const c = mkCam('07 Lado a lado · Russian Arm', 21, { shake: 0.25 }); onArm(c, 0.6, 1.0, 0.3); applyFrame(F(9.5)); c.cons.frameX = 0; c.cons.frameY = 0;
+    const st = S(F(9.5)), cp = rt.get(c.id) ? worldPos(c, F(9.5), new THREE.Vector3()) : st.p; const l = lead(cp, F(9.5)); c.cons.frameX = l.x;
+    shot(c, 8, 12, 'Lado a lado', 'Carro de câmera na outra faixa, braço a 1 m de altura, 150 km/h na subida em curva.'); }
+  // 8 · FPV na descida
+  { const c = mkCam('08 Descida · FPV', 20, { body: 'komodo', lens: 'generic', shake: 0.4, freq: 2.2 }); c.gear = { type: 'fpv' };
+    bake(c, F(19.5), F(22.5), (f, u) => { const st = S(f); return st.p.clone().addScaledVector(st.fw, lerp(-8, -3.8, u)).addScaledVector(st.rt, lerp(1.8, -0.6, u)).setY(st.p.y + lerp(3.2, 0.9, smooth(0, 1, u))); });
+    c.cons.frameX = 0; c.cons.frameY = -1 / 3; shot(c, 19.5, 22.5, 'Descida · FPV', 'FPV mergulha atrás do carro na descida, passando de 3 m para 0,9 m.'); }
+  // 9 · câmera na mão no S
+  { const A = S(F(24.1)), c = mkCam('09 Ápice · câmera na mão', 18, { shake: 0.9, freq: 1.6 }); c.gear = { type: 'handheld' }; const p = A.p.clone().addScaledVector(A.rt, 2.6).addScaledVector(A.fw, 9); p.y = A.p.y + 0.7; Object.assign(c.base, { px: p.x, py: p.y, pz: p.z });
+    frameAt(c, F(23.6), 0); shot(c, 22.5, 25, 'Ápice na mão', 'Operador agachado no acostamento, no ápice do S; o carro passa a 2,5 m da lente.'); }
+  // 10 · traseira no braço
+  { const c = mkCam('10 Traseira · Russian Arm', 28, { shake: 0.3 }); onArm(c, -0.4, 0.75, 3.7); c.cons.frameX = 0; c.cons.frameY = -1 / 3;
+    shot(c, 25, 27.5, 'Traseira', 'Braço baixo atrás do carro, lanternas no terço inferior saindo do S.'); }
+  // 11 · final aéreo
+  { const A = S(F(28.4)), c = mkCam('11 Final · drone sobe', 28, { body: 'inspire3', lens: 'dl', shake: 0.1 }); c.gear = { type: 'drone' };
+    bake(c, F(27.5), F(30), (f, u) => A.p.clone().addScaledVector(A.fw, lerp(10, 6, u)).addScaledVector(A.rt, lerp(12, 14, u))
+      .setY(A.p.y + lerp(3, 20, u)));
+    frameAt(c, F(29), -1 / 3); shot(c, 27.5, 30, 'Final aéreo', 'Drone sobe e revela a serra enquanto o 911 some na próxima reta.'); }
+  project.shots = shots; normalizeShots(); project.activeCamera = project.shots[0].cam;
+  for (const s of project.shots) { const o = getObj(s.cam); if (o.gear && GEAR[o.gear.type] && GEAR[o.gear.type].base) optimizeGearBase(o); }
+  project.shots.forEach((s, i) => { const o = getObj(s.cam); o.name = String(i + 1).padStart(2, '0') + o.name.slice(2); });
+  rebuildAll(); applyFrame(0); commit(); renderOutliner(); renderInspector(); tlDirty = true; renderViewSel(); setView('cam');
+  return { car, camcar };
 }
 
 init();

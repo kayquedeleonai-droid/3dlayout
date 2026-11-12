@@ -118,7 +118,7 @@ const _carMats = {};
 function carMats(color) {
   const k = color; if (_carMats[k]) return _carMats[k];
   const body = new THREE.MeshStandardMaterial({ color, roughness: .42, metalness: .15 });
-  const glass = new THREE.MeshStandardMaterial({ color: '#1d252e', roughness: .12, metalness: .3 });
+  const glass = new THREE.MeshStandardMaterial({ color: '#1d252e', roughness: .12, metalness: .3, transparent: true, opacity: .62, depthWrite: false });
   const trim = new THREE.MeshStandardMaterial({ color: '#141518', roughness: .75, metalness: 0 });
   const hl = new THREE.MeshStandardMaterial({ color: '#e9eef2', roughness: .2, emissive: '#cfd8e0', emissiveIntensity: .35 });
   const tl = new THREE.MeshStandardMaterial({ color: '#8e1414', roughness: .3, emissive: '#5a0606', emissiveIntensity: .6, side: THREE.DoubleSide }); hl.side = THREE.DoubleSide;

@@ -77,6 +77,7 @@ const SPEED_PRESETS = {
   launch: { lb: 'Arrancar 0 → X em T s', f: (v, T) => [{ t: 0, v: 0 }, { t: T, v }] },
   brake: { lb: 'Frear X → 0 em T s', f: (v, T, D) => [{ t: 0, v }, { t: Math.max(0, D - T), v }, { t: D, v: 0 }] },
   pass: { lb: 'Passa acelerando (X → X+40%)', f: (v, T, D) => [{ t: 0, v }, { t: D, v: v * 1.4 }] },
+  real: { lb: 'Pilotagem realista (freia nas curvas, X = vel. máx.)', f: null },
   stopgo: { lb: 'Chega, para 1 s e sai', f: (v, T, D) => [{ t: 0, v }, { t: D * 0.35, v: 0 }, { t: D * 0.35 + 1, v: 0 }, { t: D, v }] },
 };
 function speedSectionHTML(o) {
@@ -115,6 +116,7 @@ function initSpeedUI() {
     if (b.dataset.spdel != null) { o.speedProf.splice(+b.dataset.spdel, 1); commit(); renderInspector(); }
     if (b.dataset.spadd) { const od = odometer(o), f = clamp(Math.round(curFrame), 0, project.duration); (o.speedProf = o.speedProf || []).push({ t: +(f / project.fps).toFixed(2), v: +(od.speed[f] * 3.6).toFixed(1) }); o.speedProf.sort((a, c) => a.t - c.t); commit(); renderInspector(); }
     if (b.dataset.spread) { readProfile(o); commit(); renderInspector(); }
+    if (b.dataset.spfill && $('#spPre').value === 'real') { const P2 = realisticProfile(o, { vMax: +$('#spX').value || 160, v0: odometer(o).speed[0] * 3.6 || 100 }); if (!P2) return toast('Precisa de uma trajetória (ex.: Animar ao longo da estrada)'); o.speedProf = P2; commit(); renderInspector(); return; }
     if (b.dataset.spfill) { const pr = SPEED_PRESETS[$('#spPre').value]; o.speedProf = pr.f(+$('#spX').value || 60, +$('#spT').value || 3, project.duration / project.fps).map(p => ({ t: +p.t.toFixed(2), v: +p.v.toFixed(1) })); commit(); renderInspector(); }
     if (b.dataset.spapply) applySpeedProfile(o);
   });
@@ -129,4 +131,23 @@ function updateSpeedHud(f) {
   if (pilot.on && pilot.id === o.id) { speedHud.style.display = 'block'; speedHud.textContent = `🎮 ${fmtV(Math.abs(pilot.s.v))} · ${fmtKm(pilot.s.dist || 0)}`; return; }
   const od = odometer(o), i = clamp(Math.round(f), 0, project.duration); if (od.maxV < 0.01) { speedHud.style.display = 'none'; return; }
   speedHud.style.display = 'block'; speedHud.innerHTML = `${ASSETS[o.type].icon} <span style="font-size:15px">${fmtV(od.speed[i])}</span> <span style="color:#9aa0a6;font-weight:500">· ${fmtKm(od.dist[i])} percorridos</span>`;
+}
+/* ---------- pilotagem realista: velocidade limitada pela curva (aderência) e por aceleração/frenagem ---------- */
+function realisticProfile(o, opt = {}) {
+  const vMax = (opt.vMax ?? 160) / 3.6, aLat = (opt.aLat ?? 0.9) * 9.81, aAcc = (opt.aAcc ?? 0.45) * 9.81, aBrk = (opt.aBrk ?? 0.95) * 9.81, v0 = (opt.v0 ?? 100) / 3.6;
+  const { pts, hasY } = pathPolyline(o); if (pts.length < 3) return null;
+  // reamostra a cada 1 m
+  const R = [pts[0]], D = [0]; let acc = 0, tot = 0; for (let i = 1; i < pts.length; i++) { const d = hDist(pts[i - 1], pts[i], hasY); acc += d; tot += d; if (acc >= 1) { R.push(pts[i]); D.push(tot); acc = 0; } }
+  const n = R.length, vc = new Float64Array(n).fill(vMax);
+  for (let i = 3; i < n - 3; i++) { // raio pela variação de direção em ±3 m
+    const a = R[i - 3], b = R[i], c = R[i + 3], h1 = Math.atan2(b.x - a.x, b.z - a.z), h2 = Math.atan2(c.x - b.x, c.z - b.z); let dh = h2 - h1; while (dh > Math.PI) dh -= 2 * Math.PI; while (dh < -Math.PI) dh += 2 * Math.PI;
+    const k = Math.abs(dh) / Math.max(0.5, Math.hypot(c.x - a.x, c.z - a.z) / 2 * 2); vc[i] = Math.min(vMax, k > 1e-5 ? Math.sqrt(aLat / k) : vMax);
+  }
+  const v = new Float64Array(n); v[0] = Math.min(v0, vc[0]);
+  for (let i = 1; i < n; i++) v[i] = Math.min(vc[i], Math.sqrt(v[i - 1] * v[i - 1] + 2 * aAcc * (D[i] - D[i - 1])));
+  for (let i = n - 2; i >= 0; i--) v[i] = Math.min(v[i], Math.sqrt(v[i + 1] * v[i + 1] + 2 * aBrk * (D[i + 1] - D[i])));
+  // perfil no tempo (pontos a cada 0,25 s)
+  const prof = []; let t = 0, nextT = 0;
+  for (let i = 0; i < n - 1; i++) { if (t >= nextT) { prof.push({ t: +t.toFixed(3), v: +(v[i] * 3.6).toFixed(2) }); nextT += 0.25; } t += (D[i + 1] - D[i]) / Math.max(0.5, (v[i] + v[i + 1]) / 2); if (t > project.duration / project.fps + 0.5) break; }
+  return prof;
 }

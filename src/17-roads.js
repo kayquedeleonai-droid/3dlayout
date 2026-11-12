@@ -220,7 +220,7 @@ function roadFollow(road, obj, kmh, lane, dir, startPct, fStart, silent) {
   if (silent) return; commit(); tlDirty = true; pathVer = -1; bump(); toast(`${obj.name} anda pela estrada: frames ${f0}–${out.px[out.px.length - 1].f}`);
 }
 function initRoadUI() {
-  insp.addEventListener('change', e => { const o = sel && getObj(sel); if (o && e.target.id === 'consGround') { o.cons.ground = e.target.checked ? undefined : false; bump(); commit(); } });
+  insp.addEventListener('change', e => { const o = sel && getObj(sel); if (o && e.target.id === 'consGround') { o.cons.ground = e.target.checked ? undefined : false; bump(); commit(); } if (o && e.target.id === 'camHid') { o.camHidden = e.target.checked || undefined; bump(); commit(); } if (o && e.target.id === 'frameSel') { const [x, y] = e.target.value.split(',').map(Number); o.cons.frameX = x; o.cons.frameY = y; if (!o.cons.aim) toast('O enquadramento nos terços funciona quando a câmera mira um objeto (Mirar em)'); bump(); commit(); } });
   insp.addEventListener('click', e => {
     const o = sel && getObj(sel), b = e.target.closest('button'); if (!o || !b || o.type !== 'roadpath') return;
     if (b.dataset.rpre) { const pr = ROAD_PRESETS[b.dataset.rpre]; o.params.pts = pr.pts.map(a => a.slice()); o.params.closed = !!pr.closed; o.params.bridge = !pr.noBridge; roadSelPt = -1; rebuildRoad(o, true); }

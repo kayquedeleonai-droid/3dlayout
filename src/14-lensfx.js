@@ -75,7 +75,9 @@ function renderLens(rend, camObj, cam, mode, w, h, vx = 0, vy = 0, f = curFrame)
   cam.near = prevNear; cam.far = prevFar; cam.updateProjectionMatrix();
 }
 // render de câmera com ou sem óptica
-function renderCamera(rend, camObj, cam, mode, w, h, vx = 0, vy = 0, f = curFrame) {
+function camHide() { const hid = []; for (const o of project.objects) if (o.camHidden) { const r = rt.get(o.id); if (r && r.g.visible) { r.g.visible = false; hid.push(r.g); } } return () => hid.forEach(g => g.visible = true); }
+function renderCamera(rend, camObj, cam, mode, w, h, vx = 0, vy = 0, f = curFrame) { const restore = camHide(); try { renderCameraRaw(rend, camObj, cam, mode, w, h, vx, vy, f); } finally { restore(); } }
+function renderCameraRaw(rend, camObj, cam, mode, w, h, vx = 0, vy = 0, f = curFrame) {
   if (lensActive(camObj, mode)) { try { renderLens(rend, camObj, cam, mode, w, h, vx, vy, f); return; } catch (e) { console.warn('lensFX', e); project.settings.lensFXGlobal = false; } }
   renderScene(rend, cam, mode, w, h, vx, vy);
 }

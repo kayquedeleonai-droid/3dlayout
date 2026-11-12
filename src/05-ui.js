@@ -94,6 +94,7 @@ const GEN = {
   obj: [['forward', 'Avançar em linha reta', [['dist', 'Distância (m)', 20]]], ['circle', 'Andar em círculo', [['radius', 'Raio (m)', 8], ['turns', 'Voltas', 1]]], ['spin', 'Girar no lugar', [['angle', 'Ângulo (°)', 360]]], ['rise', 'Subir / descer', [['dist', 'Altura (m)', 3]]], ['bounce', 'Quicar', [['dist', 'Altura (m)', 1], ['count', 'Quiques', 4]]]],
 };
 let genState = { preset: null, vals: {}, ease: 'inout', len: 5 };
+const fk = (v) => Math.abs(+v || 0) < 1e-3 ? '0' : (+v).toFixed(3);
 function renderInspector() {
   inspDirty = false;
   const o = sel && getObj(sel);
@@ -119,8 +120,10 @@ function renderInspector() {
   h += sec('cons', 'Restrições' + (c.aim || c.follow || c.shake ? ' <span style="color:var(--acc)">•</span>' : ''), `
     <div class="prow wide"><span class="lb">Mirar em</span><select data-cons="aim">${optsObj(c.aim)}</select></div>
     <div class="prow wide"><span class="lb">Altura da mira</span><input type="number" step="0.1" data-cons="aimH" value="${c.aimH}"></div>
+    ${o.type === 'camera' ? `<div class="prow wide"><span class="lb">Alvo na tela</span><select id="frameSel">${[['0,0', 'Centro'], ['-0.333,0', 'Terço esquerdo'], ['0.333,0', 'Terço direito'], ['0,-0.333', 'Terço inferior'], ['0,0.333', 'Terço superior'], ['-0.333,-0.333', 'Ponto ↙ (esq. inferior)'], ['0.333,-0.333', 'Ponto ↘ (dir. inferior)'], ['-0.333,0.333', 'Ponto ↖ (esq. superior)'], ['0.333,0.333', 'Ponto ↗ (dir. superior)']].map(([v, l]) => `<option value="${v}" ${v === fk(c.frameX) + ',' + fk(c.frameY) ? 'selected' : ''}>${l}</option>`).join('')}</select></div>` : ''}
     <div class="prow wide"><span class="lb">Seguir</span><select data-cons="follow">${optsObj(c.follow)}</select></div>
     <div class="prow wide"><span class="lb">Montar (rig)</span><select data-cons="mount">${optsObj(c.mount)}</select></div>
+    ${o.type !== 'camera' ? `<div class="prow wide"><span class="lb">Esconder nas câmeras</span><input type="checkbox" id="camHid" ${o.camHidden ? 'checked' : ''} title="Aparece no editor, mas não nas câmeras nem no vídeo (carro de câmera, equipe, marcações)"></div>` : ''}
     ${followsGround(o) ? `<div class="prow wide"><span class="lb">Seguir estrada/terreno</span><input type="checkbox" id="consGround" ${c.ground === false ? '' : 'checked'}></div>` : ''}
     <div class="prow wide"><span class="lb">Tremor (°)</span><input type="number" step="0.1" min="0" data-cons="shake" value="${c.shake}"></div>
     <div class="prow wide"><span class="lb">Freq. tremor</span><input type="number" step="0.1" min="0" data-cons="shakeFreq" value="${c.shakeFreq}"></div>

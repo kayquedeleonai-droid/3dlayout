@@ -18,7 +18,7 @@ const GEAR = {
   russian: { lb: 'Russian Arm (U-Crane) em Mercedes', ic: '🚙', grp: 'Veículo', car: true, arm: 4.3, carVmax: 150, src: 'U-Crane / Russian Arm: braço padrão 4,3 m (opcional até 6,5 m), tilt ±45°, pan 360°; operação até 150 km/h. Carro: Mercedes GLE63s (4,94 × 2,01 × 1,78 m).' },
   carmount: { lb: 'Car mount (ventosa / hostess tray)', ic: '🧲', grp: 'Veículo', car: true, carVmax: 100, src: 'Rig preso à carroceria (ventosas, hostess tray, hood mount). Limite típico ~100 km/h — confirme com o rigger.' },
   drone: { lb: 'Drone DJI Inspire 3', ic: '🚁', grp: 'Aéreo', air: true, hMin: 0.5, hMax: 120, vMax: 26.1, vUp: 8, vDown: 8, src: 'Inspire 3: 94 km/h na horizontal, sobe/desce 8 m/s, 0,71 × 0,50 m. Altura limitada a 120 m (limite usual de regulamentação).' },
-  fpv: { lb: 'Drone FPV de cinema', ic: '🛸', grp: 'Aéreo', air: true, hMin: 0.2, hMax: 120, vMax: 33, vUp: 15, vDown: 15, src: 'FPV de cinema (câmera cine leve): até ~120 km/h, manobras rápidas (típico). Cinewhoop: bem mais lento (~15 m/s).' },
+  fpv: { lb: 'Drone FPV de cinema', ic: '🛸', grp: 'Aéreo', air: true, hMin: 0.2, hMax: 120, vMax: 39, vUp: 15, vDown: 15, src: 'FPV de cinema com câmera cine leve (ex.: RED Komodo): até ~140 km/h em perseguição (típico). Cinewhoop: bem mais lento (~15 m/s).' },
   cable: { lb: 'Cable cam', ic: '🚡', grp: 'Aéreo', hMin: 2, hMax: 40, vMax: 10, line: true, src: 'Câmera em cabo entre duas torres: trajeto em linha reta, até ~10 m/s (típico).' },
 };
 const GEAR_GROUPS = ['Livre', 'Fixo', 'Chão', 'Gruas', 'Veículo', 'Aéreo'];
@@ -37,22 +37,26 @@ function groundBelow(p) { const g = typeof groundAt === 'function' && _roadRelie
 function gearCheck(o, type) {
   const G = GEAR[type || (o.gear && o.gear.type)]; if (!G || !G.lb || type === 'none') return { ok: true, items: [], stats: {} };
   const fps = project.fps, N = project.duration, P = [], items = [];
+  // com decupagem: só os trechos em que esta câmera está no ar (cada plano é um take)
+  const onAir = (project.shots || []).filter(s => s.cam === o.id), air = (f) => !onAir.length || onAir.some(s => f >= s.start && f <= s.end);
   const saved = o.gear; if (type && (!o.gear || o.gear.type !== type)) o.gear = Object.assign({}, o.gear || {}, { type });
   for (let f = 0; f <= N; f++) P.push(camWorld(o, f, new THREE.Vector3()));
   let hMin = 1e9, hMax = -1e9, vMax = 0, vUpMax = 0, vDnMax = 0, rMin = 1e9, rMax = 0, teleMax = 0, carV = 0, prevR = null, moved = 0;
   const bad = (k, f) => { const it = items.find(i => i.k === k); if (it) { it.f1 = f; it.n++; } else items.push({ k, f0: f, f1: f, n: 1 }); };
   const veh = G.car ? getObj((o.gear && o.gear.veh) || o.cons.mount) : null;
   for (let f = 0; f <= N; f++) {
+    if (!air(f)) { prevR = null; continue; }
     const p = P[f], h = p.y - groundBelow(p); hMin = Math.min(hMin, h); hMax = Math.max(hMax, h);
-    if (f > 0) { const d = p.distanceTo(P[f - 1]) * fps, vy = (p.y - P[f - 1].y) * fps; vMax = Math.max(vMax, d); vUpMax = Math.max(vUpMax, vy); vDnMax = Math.max(vDnMax, -vy); moved += p.distanceTo(P[f - 1]);
+    if (f > 0 && air(f - 1)) { const d = p.distanceTo(P[f - 1]) * fps, vy = (p.y - P[f - 1].y) * fps; vMax = Math.max(vMax, d); vUpMax = Math.max(vUpMax, vy); vDnMax = Math.max(vDnMax, -vy); moved += p.distanceTo(P[f - 1]);
       if (G.vMax && d > G.vMax * 1.02) bad('v', f); if (G.vUp && vy > G.vUp * 1.02) bad('vup', f); if (G.vDown && -vy > G.vDown * 1.02) bad('vdn', f); }
     if (G.hMin != null && h < G.hMin - 0.01) bad('hmin', f); if (G.hMax != null && h > G.hMax + 0.01) bad('hmax', f);
     const pv = gearPivot(o, f, _gv);
     if (pv && (G.reach || G.arm)) { const r = p.distanceTo(pv); rMin = Math.min(rMin, r); rMax = Math.max(rMax, r); const [a, b] = G.reach || [0, G.arm]; if (r < a - 0.05) bad('rmin', f); if (r > b + 0.05) bad('rmax', f); if (G.tele && prevR != null) { const tv = Math.abs(r - prevR) * fps; teleMax = Math.max(teleMax, tv); if (tv > G.tele * 1.02) bad('tele', f); } prevR = r; }
-    if (veh && f > 0) { const a = worldPos(veh, f, _gv2).clone(), b = worldPos(veh, f - 1, new THREE.Vector3()); const kmh = a.distanceTo(b) * fps * 3.6; carV = Math.max(carV, kmh); if (kmh > G.carVmax * 1.02) bad('car', f); }
+    if (veh && f > 0 && air(f - 1)) { const a = worldPos(veh, f, _gv2).clone(), b = worldPos(veh, f - 1, new THREE.Vector3()); const kmh = a.distanceTo(b) * fps * 3.6; carV = Math.max(carV, kmh); if (kmh > G.carVmax * 1.02) bad('car', f); }
   }
+  if (hMin > 1e8) { hMin = hMax = 0; }
   if (G.still && moved > 0.05) items.push({ k: 'still', f0: 0, f1: N, n: 1 });
-  if (G.travel) { let span = 0; for (const p of P) span = Math.max(span, p.distanceTo(P[0])); if (span > G.travel + 0.02) items.push({ k: 'travel', f0: 0, f1: N, n: 1, v: span }); }
+  if (G.travel) { let span = 0; for (const p of P.filter((_, f) => air(f))) span = Math.max(span, p.distanceTo(P[0])); if (span > G.travel + 0.02) items.push({ k: 'travel', f0: 0, f1: N, n: 1, v: span }); }
   if (G.car && !veh) items.push({ k: 'nocar', f0: 0, f1: N, n: 1 });
   if (G.base && !(o.gear && o.gear.base)) items.push({ k: 'nobase', f0: 0, f1: N, n: 1 });
   o.gear = saved;
@@ -70,7 +74,7 @@ const GEAR_MSG = {
 function gearCheckHTML(o) {
   const G = GEAR[o.gear && o.gear.type]; if (!G || o.gear.type === 'none') return '';
   const R = gearCheck(o), s = R.stats, fps = project.fps, t = f => (f / fps).toFixed(1) + 's';
-  let h = `<div class="hint" style="margin:6px 0 2px">Ao longo da cena: altura ${s.hMin.toFixed(2)}–${s.hMax.toFixed(2)} m · vel. máx. ${(s.vMax * 3.6).toFixed(1)} km/h${s.rMax ? ` · alcance ${s.rMin.toFixed(2)}–${s.rMax.toFixed(2)} m` : ''}${s.carV ? ` · carro até ${s.carV.toFixed(0)} km/h` : ''}</div>`;
+  let h = `<div class="hint" style="margin:6px 0 2px">${(project.shots || []).some(s => s.cam === o.id) ? 'Nos planos em que está no ar' : 'Ao longo da cena'}: altura ${s.hMin.toFixed(2)}–${s.hMax.toFixed(2)} m · vel. máx. ${(s.vMax * 3.6).toFixed(1)} km/h${s.rMax ? ` · alcance ${s.rMin.toFixed(2)}–${s.rMax.toFixed(2)} m` : ''}${s.carV ? ` · carro até ${s.carV.toFixed(0)} km/h` : ''}</div>`;
   if (R.ok) h += `<div class="hint" style="color:#6cc86a;margin:4px 0">✓ Movimento possível com este equipamento.</div>`;
   else h += R.items.map(it => `<div class="hint" style="color:#ff8a80;margin:3px 0">⚠ ${GEAR_MSG[it.k](G, s, it)}${it.k !== 'still' && it.k !== 'nocar' && it.k !== 'nobase' && it.k !== 'travel' ? ` <span style="color:var(--tx3)">(${t(it.f0)}–${t(it.f1)})</span>` : ''}</div>`).join('');
   return h;
@@ -80,7 +84,7 @@ function gearSectionHTML(o) {
   let sel2 = '<select id="gearSel">'; for (const g of GEAR_GROUPS) { sel2 += `<optgroup label="${g}">` + Object.entries(GEAR).filter(([, v]) => v.grp === g).map(([k, v]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${v.ic} ${v.lb}</option>`).join('') + '</optgroup>'; } sel2 += '</select>';
   let h = `<div class="prow wide"><span class="lb">Equipamento</span>${sel2}</div>`;
   if (G.src) h += `<div class="hint" style="margin-top:2px">📋 ${G.src}</div>`;
-  if (G.base) h += `<div class="btnrow"><button data-gear-act="base">📍 Base atrás da câmera (frame atual)</button></div>`;
+  if (G.base) h += `<div class="btnrow"><button data-gear-act="base">📍 Base atrás da câmera (frame atual)</button><button data-gear-act="opt">🎯 Otimizar posição da base</button></div>`;
   if (G.car) h += `<div class="btnrow"><button data-gear-act="car">${G.car && cur === 'russian' ? '🚙 Criar carro de câmera com Russian Arm' : '🔗 Montar no carro selecionado'}</button></div>`;
   h += gearCheckHTML(o);
   h += `<div class="btnrow"><button data-gear-act="suggest">✨ Sugerir equipamento para este movimento</button></div>`;
@@ -226,5 +230,23 @@ function initGearUI() {
     if (a === 'base') { placeGearBase(o); bump(); commit(); renderInspector(); }
     if (a === 'car') { if (o.gear && o.gear.type === 'russian') createCameraCar(o); else { const so = project.objects.find(x => x.id !== o.id && ASSETS[x.type].pilot === 'car'); if (!so) return toast('Adicione um carro primeiro'); convertMount(o, so.id); o.cons.mount = so.id; bump(); commit(); renderInspector(); } }
     if (a === 'suggest') suggestGear(o);
+    if (a === 'opt') { if (optimizeGearBase(o)) { bump(); commit(); renderInspector(); toast('Base posicionada: braço com o mínimo de telescópio, fora da pista'); } else toast('Nenhuma posição de base alcança o movimento inteiro — encurte o movimento'); }
   });
+}
+/* base da grua otimizada: braço o mais "fixo" possível (pouco telescópio), fora da pista e dentro do alcance */
+function optimizeGearBase(o) {
+  const G = GEAR[o.gear && o.gear.type]; if (!G || !G.base) return false;
+  const onAir = (project.shots || []).filter(s => s.cam === o.id), fr = []; for (let f = 0; f <= project.duration; f += 2) if (!onAir.length || onAir.some(s => f >= s.start && f <= s.end)) fr.push(f);
+  const P = fr.map(f => camWorld(o, f, new THREE.Vector3())); if (!P.length) return false;
+  const c = P.reduce((a, p) => a.add(p), new THREE.Vector3()).multiplyScalar(1 / P.length), roads = roadsWorld();
+  const offRoad = (x, z) => !roads.some(R => R.S.some(s => (s.x - x) ** 2 + (s.z - z) ** 2 < (R.E + 1.5) ** 2));
+  let best = null, R = G.reach[1];
+  for (let dx = -R; dx <= R; dx += 0.5) for (let dz = -R; dz <= R; dz += 0.5) {
+    const x = c.x + dx, z = c.z + dz; if (!offRoad(x, z)) continue; const gy = groundBelow(new THREE.Vector3(x, 0, z)), pv = new THREE.Vector3(x, gy + G.pivotH, z);
+    let mn = 1e9, mx = 0, tele = 0, prev = null; for (let i = 0; i < P.length; i++) { const r = P[i].distanceTo(pv); mn = Math.min(mn, r); mx = Math.max(mx, r); if (prev != null && fr[i] - fr[i - 1] === 2) tele = Math.max(tele, Math.abs(r - prev) * project.fps / 2); prev = r; }
+    if (mn < G.reach[0] + 0.1 || mx > G.reach[1] - 0.1) continue;
+    const score = tele + (mx - mn) * 0.05; if (!best || score < best.score) best = { score, x, z, gy };
+  }
+  if (!best) return false;
+  o.gear.base = { x: +best.x.toFixed(3), y: +best.gy.toFixed(3), z: +best.z.toFixed(3), yaw: 0 }; return true;
 }

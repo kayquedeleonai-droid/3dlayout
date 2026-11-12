@@ -128,6 +128,10 @@ function evalTransform(o, f) {
     if (tp.distanceToSquared(pos) > 1e-6) {
       _m.lookAt(pos, tp, UP); g.quaternion.setFromRotationMatrix(_m);
       if (o.type !== 'camera') g.rotateY(Math.PI); // objetos olham +Z
+      if (o.type === 'camera' && (c.frameX || c.frameY)) { // enquadramento: põe o alvo numa linha dos terços (ou onde quiser)
+        const focal = getVal(o, 'focal', f), vf = focalToVFov(focal, aspectNum(), camSensor(o)) * DEG, tv = Math.tan(vf / 2), th = tv * aspectNum();
+        g.rotateY(Math.atan(th * (c.frameX || 0))); g.rotateX(Math.atan(tv * -(c.frameY || 0)));
+      }
       g.rotateZ(getVal(o, 'rz', f) * DEG);
     }
   }
@@ -187,7 +191,7 @@ function applyFrame(f) {
     if (o.type === 'camera') updateFrustum(r.rig, r.rig.cam.fov, r.rig.cam.aspect, project.activeCamera === o.id, sel === o.id ? camFocus(o, f) : 0);
   }
   if (roadHandles.userData.road) syncRoadHandles();
-  updateGearViz(f); updateSpeedHud(f);
+  updateGearViz(f); updateSpeedHud(f); seqTick(f);
 }
 
 /* ---------- render ---------- */

@@ -221,7 +221,7 @@ function renderPip(w, h) {
   const vr = $('#vpwrap').getBoundingClientRect(), br2 = body.getBoundingClientRect();
   const x = br2.left - vr.left, yb = h - (br2.top - vr.top) - ph; pipRect = { x, y: br2.top - vr.top - 40, w: pw, h: ph + 40 };
   setHelpersVisible(false);
-  renderScene(renderer, r.rig.cam, renderMode, pw, ph, x, yb);
+  { const restore = camHide(); renderScene(renderer, r.rig.cam, renderMode, pw, ph, x, yb); restore(); }
   renderer.setViewport(0, 0, w, h);
   setHelpersVisible(true);
 }
