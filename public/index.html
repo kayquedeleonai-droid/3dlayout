@@ -824,6 +824,12 @@ function animPerson(rig, c, p, phaseOff = 0) {
       rig.hips.position.y = rig.hipY * 0.5 + 0.02 * H; rig.torso.rotation.x = -0.05;
       rig.legs.forEach(L => { L.h.rotation.x = -Math.PI / 2; L.k.rotation.x = Math.PI / 2; L.a.rotation.x = 0; });
       rig.arms.forEach(A => { A.s.rotation.x = -0.35; A.e.rotation.x = -0.9; });
+    } else if (pose === 'drive') {
+      // posição de pilotagem: H-point a 0,22×altura do quadril acima do assoalho, coxas quase horizontais, encosto reclinado ~17°
+      rig.hips.position.y = rig.hipY * 0.22; rig.torso.rotation.x = -(p.recline ?? 0.3);
+      rig.legs.forEach((L, i) => { L.h.rotation.x = -1.75 + (i ? 0.08 : 0); L.k.rotation.x = 0.6 - (i ? 0.1 : 0); L.a.rotation.x = 0.45; });
+      rig.arms.forEach(A => { A.s.rotation.set(-0.95, 0, A.side * -0.12); A.e.rotation.set(-0.55, 0, 0); });
+      if (rig.head) rig.head.rotation.x = (p.recline ?? 0.3) * 0.8; // olhar para a estrada, não para o céu
     } else if (pose === 'wave') {
       const A = rig.arms[1]; A.s.rotation.set(0, 0, -2.6); A.e.rotation.set(0, 0, -0.4 + Math.sin(c.t * 9) * 0.45);
     } else if (pose === 'phone') {
@@ -835,7 +841,7 @@ function animPerson(rig, c, p, phaseOff = 0) {
     }
   }
 }
-const personParams = (h, shirt, pants, skin) => [P('look', 'Visual', 'select', 'bot', { opts: [['bot', 'Bot (estilo Mixamo)'], ['mannequin', 'Manequim de madeira'], ['clothes', 'Roupas']] }), P('height', 'Altura (m)', 'num', h, { min: 0.8, max: 2.2, step: .01 }), P('build', 'Porte', 'num', 0.5, { min: 0, max: 1, step: .05 }), P('shirt', 'Camisa', 'color', shirt), P('pants', 'Calça', 'color', pants), P('skin', 'Pele', 'color', skin), P('hair', 'Cabelo', 'color', '#2a1d14'), P('sex', 'Corpo', 'select', 'm', { opts: [['m', 'Masculino'], ['f', 'Feminino']] }), P('sleeves', 'Mangas', 'select', 'long', { opts: [['long', 'Compridas'], ['short', 'Curtas']] }), P('pose', 'Pose parado', 'select', 'stand', { opts: [['stand', 'Em pé'], ['sit', 'Sentado'], ['wave', 'Acenando'], ['phone', 'Ao telefone'], ['cross', 'Braços cruzados'], ['point', 'Apontando']] }), P('walk', 'Vel. andar (m/s)', 'num', 1.4, { min: .3, max: 3, step: .1 }), P('run', 'Vel. correr (m/s)', 'num', 4.5, { min: 2, max: 10, step: .1 })];
+const personParams = (h, shirt, pants, skin) => [P('look', 'Visual', 'select', 'bot', { opts: [['bot', 'Bot (estilo Mixamo)'], ['mannequin', 'Manequim de madeira'], ['clothes', 'Roupas']] }), P('height', 'Altura (m)', 'num', h, { min: 0.8, max: 2.2, step: .01 }), P('build', 'Porte', 'num', 0.5, { min: 0, max: 1, step: .05 }), P('shirt', 'Camisa', 'color', shirt), P('pants', 'Calça', 'color', pants), P('skin', 'Pele', 'color', skin), P('hair', 'Cabelo', 'color', '#2a1d14'), P('sex', 'Corpo', 'select', 'm', { opts: [['m', 'Masculino'], ['f', 'Feminino']] }), P('sleeves', 'Mangas', 'select', 'long', { opts: [['long', 'Compridas'], ['short', 'Curtas']] }), P('pose', 'Pose parado', 'select', 'stand', { opts: [['stand', 'Em pé'], ['sit', 'Sentado'], ['drive', 'Dirigindo (banco do carro)'], ['wave', 'Acenando'], ['phone', 'Ao telefone'], ['cross', 'Braços cruzados'], ['point', 'Apontando']] }), P('walk', 'Vel. andar (m/s)', 'num', 1.4, { min: .3, max: 3, step: .1 }), P('run', 'Vel. correr (m/s)', 'num', 4.5, { min: 2, max: 10, step: .1 })];
 def('person', { cat: 'Pessoas', label: 'Pessoa', icon: '🧍', pilot: 'walker', params: personParams(1.75, '#2f6db5', '#3a3d45', '#d9a07a'), build: buildPerson, anim: animPerson });
 def('woman', { cat: 'Pessoas', label: 'Mulher', icon: '🧍‍♀️', pilot: 'walker', params: personParams(1.65, '#c94b3c', '#24262b', '#f1c7a6').map(x => x.k === 'sex' ? { ...x, def: 'f' } : x.k === 'build' ? { ...x, def: 0.2 } : x.k === 'hair' ? { ...x, def: '#6b3f1f' } : x), build: buildPerson, anim: animPerson });
 def('child', { cat: 'Pessoas', label: 'Criança', icon: '🧒', pilot: 'walker', params: personParams(1.15, '#d9a441', '#2f6db5', '#d9a07a').map(x => x.k === 'build' ? { ...x, def: 0.3 } : x.k === 'walk' ? { ...x, def: 1.1 } : x), build: buildPerson, anim: animPerson });
@@ -1468,9 +1474,9 @@ function pchip(pts) {
 const _carMats = {};
 function carMats(color) {
   const k = color; if (_carMats[k]) return _carMats[k];
-  const body = new THREE.MeshStandardMaterial({ color, roughness: .42, metalness: .15 });
-  const glass = new THREE.MeshStandardMaterial({ color: '#1d252e', roughness: .12, metalness: .3, transparent: true, opacity: .62, depthWrite: false });
-  const trim = new THREE.MeshStandardMaterial({ color: '#141518', roughness: .75, metalness: 0 });
+  const body = new THREE.MeshStandardMaterial({ color, roughness: .42, metalness: .15, side: THREE.DoubleSide });
+  const glass = new THREE.MeshStandardMaterial({ color: '#1d252e', roughness: .12, metalness: .3, transparent: true, opacity: .62, depthWrite: false, side: THREE.DoubleSide });
+  const trim = new THREE.MeshStandardMaterial({ color: '#141518', roughness: .75, metalness: 0, side: THREE.DoubleSide });
   const hl = new THREE.MeshStandardMaterial({ color: '#e9eef2', roughness: .2, emissive: '#cfd8e0', emissiveIntensity: .35 });
   const tl = new THREE.MeshStandardMaterial({ color: '#8e1414', roughness: .3, emissive: '#5a0606', emissiveIntensity: .6, side: THREE.DoubleSide }); hl.side = THREE.DoubleSide;
   const clad = new THREE.MeshStandardMaterial({ color: '#2a2b2e', roughness: .85 });
@@ -1685,7 +1691,7 @@ function buildCarLoft(p) {
    CENA / RENDER
    ============================================================ */
 const vpEl = $('#vp');
-const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, logarithmicDepthBuffer: true }); // log depth: asfalto 3 cm acima do chão sem z-fighting a 300 m+
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.NoToneMapping;
@@ -1714,8 +1720,8 @@ const clayMat = new THREE.MeshStandardMaterial({ color: '#d8d8d8', roughness: 0.
 const normalMat = new THREE.MeshNormalMaterial();
 const depthMat = new THREE.ShaderMaterial({
   uniforms: { near: { value: 0.5 }, far: { value: 80 } },
-  vertexShader: 'varying float vz; void main(){ vec4 mv = modelViewMatrix*vec4(position,1.0); vz = -mv.z; gl_Position = projectionMatrix*mv; }',
-  fragmentShader: 'uniform float near; uniform float far; varying float vz; void main(){ float d = clamp((vz-near)/(far-near),0.0,1.0); gl_FragColor = vec4(vec3(1.0-d),1.0); }',
+  vertexShader: '#include <common>\n#include <logdepthbuf_pars_vertex>\nvarying float vz; void main(){ vec4 mv = modelViewMatrix*vec4(position,1.0); vz = -mv.z; gl_Position = projectionMatrix*mv;\n#include <logdepthbuf_vertex>\n}',
+  fragmentShader: '#include <logdepthbuf_pars_fragment>\nuniform float near; uniform float far; varying float vz; void main(){\n#include <logdepthbuf_fragment>\n float d = clamp((vz-near)/(far-near),0.0,1.0); gl_FragColor = vec4(vec3(1.0-d),1.0); }',
 });
 const segMats = new Map();
 function segMat(hex) { let m = segMats.get(hex); if (!m) { m = new THREE.MeshBasicMaterial({ color: hex, toneMapped: false }); segMats.set(hex, m); } return m; }
@@ -2259,7 +2265,7 @@ insp.addEventListener('change', e => {
   if (t.id === 'objName') { o.name = t.value || o.name; renderOutliner(); renderChanList(); commit(); return; }
   if (t.dataset.ch) { const v = parseFloat(t.value); if (isFinite(v)) { setChannel(o, t.dataset.ch, curFrame, v); commit(); tlDirty = true; } return; }
   if (t.dataset.par) { const p = ASSETS[o.type].params.find(x => x.k === t.dataset.par); o.params[p.k] = p.t === 'bool' ? t.checked : (p.t === 'num' || p.t === 'int') ? clamp(+t.value, p.min, p.max) : t.value; if (o.type === 'realcar' && p.k !== 'model' && p.k !== 'color' && p.k !== 'vmax' && p.k !== 'modelName' && p.k !== 'body' && o.params.model !== 'custom') o.params.model = 'custom'; buildRuntime(o); attachGizmo(); bump(); commit(); return; }
-  if (t.dataset.cons) { const k = t.dataset.cons; if (k === 'mount') { if (t.value) convertMount(o, t.value); else { const p = worldPos(o, curFrame, new THREE.Vector3()); o.cons.mount = null; delete o.tracks.px; delete o.tracks.py; delete o.tracks.pz; Object.assign(o.base, { px: p.x, py: p.y, pz: p.z }); } } o.cons[k] = (k === 'aim' || k === 'follow' || k === 'mount') ? (t.value || null) : +t.value; if (k === 'follow') convertFollow(o, t.value || null); bump(); commit(); renderInspector(); return; }
+  if (t.dataset.cons) { const k = t.dataset.cons; if (k === 'mount') { const tg = t.value && getObj(t.value); if (tg && o.type === 'person' && ASSETS[tg.type] && ASSETS[tg.type].pilot === 'car') { const r = seatInCar(o, tg); buildRuntime(o); bump(); commit(); renderInspector(); toast('Sentado no banco do motorista · folga até o teto ' + Math.round(r.headroom * 100) + ' cm'); return; } if (t.value) convertMount(o, t.value); else { const p = worldPos(o, curFrame, new THREE.Vector3()); o.cons.mount = null; delete o.tracks.px; delete o.tracks.py; delete o.tracks.pz; Object.assign(o.base, { px: p.x, py: p.y, pz: p.z }); } } o.cons[k] = (k === 'aim' || k === 'follow' || k === 'mount') ? (t.value || null) : +t.value; if (k === 'follow') convertFollow(o, t.value || null); bump(); commit(); renderInspector(); return; }
   if (t.id === 'genPreset') { genState.preset = t.value; genState.vals = {}; renderInspector(); return; }
   if (t.dataset.gen) { genState.vals[t.dataset.gen] = +t.value; return; }
   if (t.id === 'genLen') { genState.len = +t.value; return; }
@@ -3000,7 +3006,7 @@ $('#bHelp').onclick = () => openModal('Atalhos e fluxo', `<div class="helpgrid">
    ============================================================ */
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 function outSize(res) { const a = aspectNum(), long = { '540': 960, '720': 1280, '1080': 1920, '1440': 2560, '2160': 3840 }[res] || 1920; let w, h; if (a >= 1) { w = long; h = Math.round(long / a); } else { h = long; w = Math.round(long * a); } return [w - w % 2, h - h % 2]; }
-function makeRenderer(w, h) { const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }); r.setPixelRatio(1); r.setSize(w, h, false); r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap; r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.NoToneMapping; return r; }
+function makeRenderer(w, h) { const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, logarithmicDepthBuffer: true }); r.setPixelRatio(1); r.setSize(w, h, false); r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap; r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.NoToneMapping; return r; }
 function exportCam() { const id = $('#exCam') ? $('#exCam').value : project.activeCamera; if (id === '__cut') return 'cut'; return id && getObj(id); }
 $('#bExport').onclick = () => {
   const cams = project.objects.filter(o => o.type === 'camera');
@@ -4156,7 +4162,7 @@ insp.addEventListener('click', e => { const b = e.target.closest('[data-envtog]'
 let thumbR = null, thumbScene = null, thumbCam = null, thumbGround = null;
 const thumbs = new Map(), thumbQ = [], thumbQueued = new Set();
 function initThumbs() {
-  try { thumbR = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }); } catch (e) { return; }
+  try { thumbR = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, logarithmicDepthBuffer: true }); } catch (e) { return; }
   thumbR.setPixelRatio(1); thumbR.setSize(240, 180, false); thumbR.outputColorSpace = THREE.SRGBColorSpace; thumbR.toneMapping = THREE.NoToneMapping;
   thumbScene = new THREE.Scene();
   const c = document.createElement('canvas'); c.width = 4; c.height = 128; const x = c.getContext('2d'); const g = x.createLinearGradient(0, 0, 0, 128); g.addColorStop(0, '#36363b'); g.addColorStop(1, '#19191b'); x.fillStyle = g; x.fillRect(0, 0, 4, 128);
@@ -4609,9 +4615,11 @@ function roadDims(p) { const hw = p.lanes * p.laneW / 2, E = hw + (+p.shoulder |
 // amostra a spline a cada ~1 m: posição, direção, vetor lateral, distância acumulada
 function sampleRoad(p) {
   const c = roadCurve(p), len = c.getLength(), n = clamp(Math.ceil(len / 1.0), 8, 3000), S = [];
+  // a spline não pode ultrapassar a faixa de alturas dos pontos (evita asfalto afundando abaixo do chão)
+  const ys = roadPts(p).map(a => +a[1] || 0), yLo = Math.min(...ys), yHi = Math.max(...ys);
   for (let i = 0; i <= n; i++) {
     const u = i / n, pt = c.getPointAt(u), t = c.getTangentAt(u), hl = Math.hypot(t.x, t.z) || 1;
-    S.push({ x: pt.x, y: pt.y, z: pt.z, tx: t.x / hl, tz: t.z / hl, rx: -t.z / hl, rz: t.x / hl, s: u * len, grade: t.y / hl });
+    S.push({ x: pt.x, y: clamp(pt.y, yLo, yHi), z: pt.z, tx: t.x / hl, tz: t.z / hl, rx: -t.z / hl, rz: t.x / hl, s: u * len, grade: t.y / hl });
   }
   return { S, len };
 }
@@ -5293,7 +5301,7 @@ function shotThumb(sh) {
   if (shotThumbs.has(key)) return shotThumbs.get(key);
   try {
     const a = aspectNum(), W = 224, H = Math.round(W / a);
-    if (!thumbRend) { thumbRend = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }); thumbRend.outputColorSpace = renderer.outputColorSpace; thumbRend.toneMapping = renderer.toneMapping; thumbRend.shadowMap.enabled = renderer.shadowMap.enabled; }
+    if (!thumbRend) { thumbRend = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, logarithmicDepthBuffer: true }); thumbRend.outputColorSpace = renderer.outputColorSpace; thumbRend.toneMapping = renderer.toneMapping; thumbRend.shadowMap.enabled = renderer.shadowMap.enabled; }
     thumbRend.setSize(W, H, false);
     applyFrame(mid); setHelpersVisible(false);
     const restore = camHide(); renderScene(thumbRend, r.rig.cam, renderMode === 'shaded' ? 'shaded' : renderMode, W, H); restore();
@@ -5431,9 +5439,21 @@ tlc.addEventListener('drop', e => { const id = e.dataTransfer.getData('text/x-ca
    ============================================================ */
 // rodovia: retas longas, curvas abertas, leve subida, ponte sobre um rio e descida suave — sempre no asfalto
 const COMM_ROAD = [[0, 0, -420], [0, 0, -180], [30, 0, -20], [130, 1, 110], [280, 1.5, 175], [430, 2.5, 190], [540, 6.5, 170], [640, 7, 130], [740, 6.5, 80], [840, 2.5, 20], [930, 1, -70], [990, 0.5, -190], [1010, 0, -330], [1010, 0, -620]];
+// senta uma pessoa no banco do motorista com base nas dimensões REAIS do carro (H-point, bitola, entre-eixos, altura do teto)
+function seatInCar(person, car) {
+  const cp = car.params || {}, Hc = +cp.height || 1.45, Wc = +cp.width || 1.8, Lc = +cp.length || 4.5, wb = +cp.wheelbase || Lc * 0.6, fo = +cp.foverhang || Lc * 0.2;
+  const pp = person.params, H = +pp.height || 1.75, hipY = H * 0.52;
+  const hp = clamp(0.31 + (Hc - 1.3) * 0.85, 0.28, 0.8); // H-point acima do solo: 911 ≈ 0,31 m · sedã ≈ 0,45 · SUV ≈ 0,7
+  let rec = 0.3; const top = (r) => hp + (H - hipY) * Math.cos(r) + 0.02;
+  while (top(rec) > Hc - 0.06 && rec < 0.55) rec += 0.05; // pessoa alta em carro baixo: reclina o banco como na vida real
+  pp.pose = 'drive'; pp.recline = +rec.toFixed(2);
+  person.cons.mount = car.id; person.cons.ground = false; person.tracks = person.tracks || {}; delete person.tracks.px; delete person.tracks.py; delete person.tracks.pz;
+  Object.assign(person.base, { px: Wc / 2 - 0.55, py: hp - hipY * 0.22, pz: (Lc / 2 - fo) - 0.55 * wb, rx: 0, ry: 0, rz: 0 });
+  return { headroom: Hc - top(rec), recline: rec };
+}
 function commScene() {
   const P = newProject(); P.name = 'Comercial esportivo — 911 na rodovia'; P.fps = 24; P.duration = 719; P.aspect = '2.39:1';
-  Object.assign(P.settings, { sky: '#6f9cc9', bg2: '#e9d5b5', ground: '#6d7752', grid: false, groundShow: true, groundOpacity: 1, fog: 0.0016, sunAz: 245, sunEl: 16, sunInt: 2.2, groundSize: 6000, exposure: 1.05 });
+  Object.assign(P.settings, { sky: '#6f9cc9', bg2: '#e9d5b5', ground: '#6d7752', grid: false, groundShow: false, groundOpacity: 1, fog: 0.0016, sunAz: 245, sunEl: 16, sunInt: 2.2, groundSize: 6000, exposure: 1.05 });
   loadProjectData(P);
   const add = (type, opts) => addObject(type, Object.assign({ silent: true }, opts));
   const road = add('roadpath', { name: 'Rodovia', params: Object.assign(defaultParams('roadpath'), { lanes: 2, laneW: 3.6, shoulder: 2.5, guard: true, center: 'double', bridge: true, delin: true, asphalt: '#323438' }) });
@@ -5450,8 +5470,8 @@ function commScene() {
   for (let i = 0, n = 0; i < 900 && n < 140; i++) { const x = -120 + rnd() * 1250, z = -700 + rnd() * 980, d = distRoad(x, z); if (d < 18 || d > 95) continue; const rx = x - 640, rz = z - 130, along = rx * Math.sin(-62 * DEG) + rz * Math.cos(-62 * DEG), across = rx * Math.cos(-62 * DEG) - rz * Math.sin(-62 * DEG); if (Math.abs(across) < 20 && Math.abs(along) < 450) continue; const t = rnd() < 0.6 ? 'pine' : 'tree'; add(t, { name: 'Árvore', params: Object.assign(defaultParams(t), { height: 9 + rnd() * 10, seed: (rnd() * 999) | 0 }), base: { px: x, py: gnd(x, z) - 0.1, pz: z, ry: rnd() * 360 } }); n++; }
   const car = add('realcar', { name: 'Porsche 911 (herói)', params: Object.assign(carDefaults('p911'), { modelName: CAR_DB.p911.name, color: '#c8102e' }) });
   buildRuntime(car); roadFollow(road, car, 260, 1, 1, 0, 0, true);
-  const drv = add('person', { name: 'Piloto', params: Object.assign(defaultParams('person'), { look: 'clothes', height: 1.72, shirt: '#1d1e22', pants: '#1d1e22', pose: 'sit' }) });
-  drv.cons.mount = car.id; drv.cons.ground = false; Object.assign(drv.base, { px: 0.36, py: -0.17, pz: -0.1 }); buildRuntime(drv);
+  const drv = add('person', { name: 'Piloto', params: Object.assign(defaultParams('person'), { look: 'clothes', height: 1.78, shirt: '#1d1e22', pants: '#1d1e22', pose: 'drive' }) });
+  seatInCar(drv, car); buildRuntime(drv);
   car.speedProf = realisticProfile(car, { vMax: 215, v0: 170, aLat: 1.05, aAcc: 0.55, aBrk: 1.0 }); applySpeedProfile(car);
   return { road, car };
 }

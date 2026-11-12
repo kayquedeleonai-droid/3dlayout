@@ -49,7 +49,7 @@ insp.addEventListener('click', e => { const b = e.target.closest('[data-envtog]'
 let thumbR = null, thumbScene = null, thumbCam = null, thumbGround = null;
 const thumbs = new Map(), thumbQ = [], thumbQueued = new Set();
 function initThumbs() {
-  try { thumbR = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }); } catch (e) { return; }
+  try { thumbR = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, logarithmicDepthBuffer: true }); } catch (e) { return; }
   thumbR.setPixelRatio(1); thumbR.setSize(240, 180, false); thumbR.outputColorSpace = THREE.SRGBColorSpace; thumbR.toneMapping = THREE.NoToneMapping;
   thumbScene = new THREE.Scene();
   const c = document.createElement('canvas'); c.width = 4; c.height = 128; const x = c.getContext('2d'); const g = x.createLinearGradient(0, 0, 0, 128); g.addColorStop(0, '#36363b'); g.addColorStop(1, '#19191b'); x.fillStyle = g; x.fillRect(0, 0, 4, 128);

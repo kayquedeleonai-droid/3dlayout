@@ -11,7 +11,7 @@ function shotThumb(sh) {
   if (shotThumbs.has(key)) return shotThumbs.get(key);
   try {
     const a = aspectNum(), W = 224, H = Math.round(W / a);
-    if (!thumbRend) { thumbRend = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }); thumbRend.outputColorSpace = renderer.outputColorSpace; thumbRend.toneMapping = renderer.toneMapping; thumbRend.shadowMap.enabled = renderer.shadowMap.enabled; }
+    if (!thumbRend) { thumbRend = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, logarithmicDepthBuffer: true }); thumbRend.outputColorSpace = renderer.outputColorSpace; thumbRend.toneMapping = renderer.toneMapping; thumbRend.shadowMap.enabled = renderer.shadowMap.enabled; }
     thumbRend.setSize(W, H, false);
     applyFrame(mid); setHelpersVisible(false);
     const restore = camHide(); renderScene(thumbRend, r.rig.cam, renderMode === 'shaded' ? 'shaded' : renderMode, W, H); restore();

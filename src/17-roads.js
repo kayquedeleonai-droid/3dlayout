@@ -26,9 +26,11 @@ function roadDims(p) { const hw = p.lanes * p.laneW / 2, E = hw + (+p.shoulder |
 // amostra a spline a cada ~1 m: posição, direção, vetor lateral, distância acumulada
 function sampleRoad(p) {
   const c = roadCurve(p), len = c.getLength(), n = clamp(Math.ceil(len / 1.0), 8, 3000), S = [];
+  // a spline não pode ultrapassar a faixa de alturas dos pontos (evita asfalto afundando abaixo do chão)
+  const ys = roadPts(p).map(a => +a[1] || 0), yLo = Math.min(...ys), yHi = Math.max(...ys);
   for (let i = 0; i <= n; i++) {
     const u = i / n, pt = c.getPointAt(u), t = c.getTangentAt(u), hl = Math.hypot(t.x, t.z) || 1;
-    S.push({ x: pt.x, y: pt.y, z: pt.z, tx: t.x / hl, tz: t.z / hl, rx: -t.z / hl, rz: t.x / hl, s: u * len, grade: t.y / hl });
+    S.push({ x: pt.x, y: clamp(pt.y, yLo, yHi), z: pt.z, tx: t.x / hl, tz: t.z / hl, rx: -t.z / hl, rz: t.x / hl, s: u * len, grade: t.y / hl });
   }
   return { S, len };
 }

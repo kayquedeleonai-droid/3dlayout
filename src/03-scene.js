@@ -2,7 +2,7 @@
    CENA / RENDER
    ============================================================ */
 const vpEl = $('#vp');
-const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, logarithmicDepthBuffer: true }); // log depth: asfalto 3 cm acima do chão sem z-fighting a 300 m+
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.NoToneMapping;
@@ -31,8 +31,8 @@ const clayMat = new THREE.MeshStandardMaterial({ color: '#d8d8d8', roughness: 0.
 const normalMat = new THREE.MeshNormalMaterial();
 const depthMat = new THREE.ShaderMaterial({
   uniforms: { near: { value: 0.5 }, far: { value: 80 } },
-  vertexShader: 'varying float vz; void main(){ vec4 mv = modelViewMatrix*vec4(position,1.0); vz = -mv.z; gl_Position = projectionMatrix*mv; }',
-  fragmentShader: 'uniform float near; uniform float far; varying float vz; void main(){ float d = clamp((vz-near)/(far-near),0.0,1.0); gl_FragColor = vec4(vec3(1.0-d),1.0); }',
+  vertexShader: '#include <common>\n#include <logdepthbuf_pars_vertex>\nvarying float vz; void main(){ vec4 mv = modelViewMatrix*vec4(position,1.0); vz = -mv.z; gl_Position = projectionMatrix*mv;\n#include <logdepthbuf_vertex>\n}',
+  fragmentShader: '#include <logdepthbuf_pars_fragment>\nuniform float near; uniform float far; varying float vz; void main(){\n#include <logdepthbuf_fragment>\n float d = clamp((vz-near)/(far-near),0.0,1.0); gl_FragColor = vec4(vec3(1.0-d),1.0); }',
 });
 const segMats = new Map();
 function segMat(hex) { let m = segMats.get(hex); if (!m) { m = new THREE.MeshBasicMaterial({ color: hex, toneMapped: false }); segMats.set(hex, m); } return m; }

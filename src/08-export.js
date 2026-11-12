@@ -3,7 +3,7 @@
    ============================================================ */
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 function outSize(res) { const a = aspectNum(), long = { '540': 960, '720': 1280, '1080': 1920, '1440': 2560, '2160': 3840 }[res] || 1920; let w, h; if (a >= 1) { w = long; h = Math.round(long / a); } else { h = long; w = Math.round(long * a); } return [w - w % 2, h - h % 2]; }
-function makeRenderer(w, h) { const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }); r.setPixelRatio(1); r.setSize(w, h, false); r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap; r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.NoToneMapping; return r; }
+function makeRenderer(w, h) { const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, logarithmicDepthBuffer: true }); r.setPixelRatio(1); r.setSize(w, h, false); r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap; r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.NoToneMapping; return r; }
 function exportCam() { const id = $('#exCam') ? $('#exCam').value : project.activeCamera; if (id === '__cut') return 'cut'; return id && getObj(id); }
 $('#bExport').onclick = () => {
   const cams = project.objects.filter(o => o.type === 'camera');

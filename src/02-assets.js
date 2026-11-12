@@ -267,6 +267,12 @@ function animPerson(rig, c, p, phaseOff = 0) {
       rig.hips.position.y = rig.hipY * 0.5 + 0.02 * H; rig.torso.rotation.x = -0.05;
       rig.legs.forEach(L => { L.h.rotation.x = -Math.PI / 2; L.k.rotation.x = Math.PI / 2; L.a.rotation.x = 0; });
       rig.arms.forEach(A => { A.s.rotation.x = -0.35; A.e.rotation.x = -0.9; });
+    } else if (pose === 'drive') {
+      // posição de pilotagem: H-point a 0,22×altura do quadril acima do assoalho, coxas quase horizontais, encosto reclinado ~17°
+      rig.hips.position.y = rig.hipY * 0.22; rig.torso.rotation.x = -(p.recline ?? 0.3);
+      rig.legs.forEach((L, i) => { L.h.rotation.x = -1.75 + (i ? 0.08 : 0); L.k.rotation.x = 0.6 - (i ? 0.1 : 0); L.a.rotation.x = 0.45; });
+      rig.arms.forEach(A => { A.s.rotation.set(-0.95, 0, A.side * -0.12); A.e.rotation.set(-0.55, 0, 0); });
+      if (rig.head) rig.head.rotation.x = (p.recline ?? 0.3) * 0.8; // olhar para a estrada, não para o céu
     } else if (pose === 'wave') {
       const A = rig.arms[1]; A.s.rotation.set(0, 0, -2.6); A.e.rotation.set(0, 0, -0.4 + Math.sin(c.t * 9) * 0.45);
     } else if (pose === 'phone') {
@@ -278,7 +284,7 @@ function animPerson(rig, c, p, phaseOff = 0) {
     }
   }
 }
-const personParams = (h, shirt, pants, skin) => [P('look', 'Visual', 'select', 'bot', { opts: [['bot', 'Bot (estilo Mixamo)'], ['mannequin', 'Manequim de madeira'], ['clothes', 'Roupas']] }), P('height', 'Altura (m)', 'num', h, { min: 0.8, max: 2.2, step: .01 }), P('build', 'Porte', 'num', 0.5, { min: 0, max: 1, step: .05 }), P('shirt', 'Camisa', 'color', shirt), P('pants', 'Calça', 'color', pants), P('skin', 'Pele', 'color', skin), P('hair', 'Cabelo', 'color', '#2a1d14'), P('sex', 'Corpo', 'select', 'm', { opts: [['m', 'Masculino'], ['f', 'Feminino']] }), P('sleeves', 'Mangas', 'select', 'long', { opts: [['long', 'Compridas'], ['short', 'Curtas']] }), P('pose', 'Pose parado', 'select', 'stand', { opts: [['stand', 'Em pé'], ['sit', 'Sentado'], ['wave', 'Acenando'], ['phone', 'Ao telefone'], ['cross', 'Braços cruzados'], ['point', 'Apontando']] }), P('walk', 'Vel. andar (m/s)', 'num', 1.4, { min: .3, max: 3, step: .1 }), P('run', 'Vel. correr (m/s)', 'num', 4.5, { min: 2, max: 10, step: .1 })];
+const personParams = (h, shirt, pants, skin) => [P('look', 'Visual', 'select', 'bot', { opts: [['bot', 'Bot (estilo Mixamo)'], ['mannequin', 'Manequim de madeira'], ['clothes', 'Roupas']] }), P('height', 'Altura (m)', 'num', h, { min: 0.8, max: 2.2, step: .01 }), P('build', 'Porte', 'num', 0.5, { min: 0, max: 1, step: .05 }), P('shirt', 'Camisa', 'color', shirt), P('pants', 'Calça', 'color', pants), P('skin', 'Pele', 'color', skin), P('hair', 'Cabelo', 'color', '#2a1d14'), P('sex', 'Corpo', 'select', 'm', { opts: [['m', 'Masculino'], ['f', 'Feminino']] }), P('sleeves', 'Mangas', 'select', 'long', { opts: [['long', 'Compridas'], ['short', 'Curtas']] }), P('pose', 'Pose parado', 'select', 'stand', { opts: [['stand', 'Em pé'], ['sit', 'Sentado'], ['drive', 'Dirigindo (banco do carro)'], ['wave', 'Acenando'], ['phone', 'Ao telefone'], ['cross', 'Braços cruzados'], ['point', 'Apontando']] }), P('walk', 'Vel. andar (m/s)', 'num', 1.4, { min: .3, max: 3, step: .1 }), P('run', 'Vel. correr (m/s)', 'num', 4.5, { min: 2, max: 10, step: .1 })];
 def('person', { cat: 'Pessoas', label: 'Pessoa', icon: '🧍', pilot: 'walker', params: personParams(1.75, '#2f6db5', '#3a3d45', '#d9a07a'), build: buildPerson, anim: animPerson });
 def('woman', { cat: 'Pessoas', label: 'Mulher', icon: '🧍‍♀️', pilot: 'walker', params: personParams(1.65, '#c94b3c', '#24262b', '#f1c7a6').map(x => x.k === 'sex' ? { ...x, def: 'f' } : x.k === 'build' ? { ...x, def: 0.2 } : x.k === 'hair' ? { ...x, def: '#6b3f1f' } : x), build: buildPerson, anim: animPerson });
 def('child', { cat: 'Pessoas', label: 'Criança', icon: '🧒', pilot: 'walker', params: personParams(1.15, '#d9a441', '#2f6db5', '#d9a07a').map(x => x.k === 'build' ? { ...x, def: 0.3 } : x.k === 'walk' ? { ...x, def: 1.1 } : x), build: buildPerson, anim: animPerson });
