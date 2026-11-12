@@ -92,7 +92,7 @@ function modelSectionHTML(o) {
     if (open) sel2 += '</optgroup>'; if (o.custom) sel2 += `<option value="__custom" selected>📦 ${esc(o.custom.name)}</option>`; sel2 += '</select>';
     h += `<div class="prow wide"><span class="lb">Trocar modelo</span>${sel2}</div>`;
   }
-  h += `<div class="btnrow"><button data-cm="load">📦 ${o.custom ? 'Trocar arquivo 3D' : 'Usar meu modelo 3D (GLB/GLTF)'}</button>${o.custom ? '<button data-cm="remove">Voltar ao procedural</button>' : ''}</div>`;
+  h += `<div class="btnrow"><button data-cm="load">${ic('box', 14)}<span>${o.custom ? 'Trocar arquivo 3D' : 'Usar meu modelo 3D (GLB/GLTF)'}</span></button>${o.custom ? '<button data-cm="remove">Voltar ao procedural</button>' : ''}</div>`;
   if (o.custom) {
     const c = o.custom;
     h += `<div class="prow wide"><span class="lb">Ajustar escala</span><select data-cmp="fit"><option value="length" ${c.fit === 'length' ? 'selected' : ''}>pelo comprimento</option><option value="height" ${c.fit === 'height' ? 'selected' : ''}>pela altura</option><option value="none" ${c.fit === 'none' ? 'selected' : ''}>tamanho original do arquivo</option></select></div>

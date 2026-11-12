@@ -20,10 +20,12 @@ const gy = (v, s) => tl.H - ((((v - s.mid) / s.half) - tl.gy0) / (tl.gy1 - tl.gy
 const yg = (y, s) => (tl.gy0 + (tl.H - 4 - y) / (tl.H - RULER - 8) * (tl.gy1 - tl.gy0)) * s.half + s.mid;
 
 /* ---------- linhas da dope sheet ---------- */
+let tlOnlyAnim = true;
 function buildRows() {
   rows = [];
   for (const o of project.objects) {
     const anim = Object.keys(o.tracks).filter(c => o.tracks[c].length);
+    if (tlOnlyAnim && !anim.length && !(o.clips && o.clips.length) && o.id !== sel && o.type !== 'camera') continue; // cenário estático não polui a timeline
     rows.push({ t: 'obj', o, chs: anim, h: 32 });
     if (o.id === sel) for (const gk in GROUPS) { const chs = GROUPS[gk].ch.filter(c => hasAnim(o, c)); if (!chs.length) continue; rows.push({ t: 'grp', o, chs, gk, h: 20 }); for (const c of chs) rows.push({ t: 'ch', o, chs: [c], h: 18 }); }
   }
@@ -33,7 +35,7 @@ function renderChanList() {
   const o = sel && getObj(sel);
   if (tl.mode === 'dope') {
     buildRows();
-    chanList.innerHTML = `<div style="min-height:100%;display:flex;flex-direction:column"><div style="height:${RULER}px;flex:none;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 10px;color:var(--tx3);font-size:11px;position:sticky;top:0;background:var(--bg1);z-index:3">Tempo atual</div><div id="sbHead" style="top:${RULER}px;height:${SB}px"><div style="display:flex;flex-direction:column;gap:2px"><span>🎬 Montagem</span><span class="sub" style="font-weight:400;color:var(--tx3);font-size:10.5px">${(project.shots || []).length ? project.shots.length + ' planos · arraste câmeras aqui' : 'arraste câmeras para cá'}</span></div><button data-sbadd="1" title="Adicionar plano: câmera selecionada a partir do frame atual">＋</button></div>` + rows.map(r => {
+    chanList.innerHTML = `<div style="min-height:100%;display:flex;flex-direction:column"><div style="height:${RULER}px;flex:none;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 10px;color:var(--tx3);font-size:11px;position:sticky;top:0;background:var(--bg1);z-index:3"><label style="display:flex;gap:6px;align-items:center;cursor:pointer" title="Esconde da timeline o cenário sem animação"><input type="checkbox" id="tlOnlyAnim" ${tlOnlyAnim ? 'checked' : ''}> Só objetos animados</label></div><div id="sbHead" style="top:${RULER}px;height:${SB}px"><div style="display:flex;flex-direction:column;gap:2px"><span>${ic('film', 13)} Montagem</span><span class="sub" style="font-weight:400;color:var(--tx3);font-size:10.5px">${(project.shots || []).length ? project.shots.length + ' planos · arraste câmeras aqui' : 'arraste câmeras para cá'}</span></div><button data-sbadd="1" title="Adicionar plano: câmera selecionada a partir do frame atual">＋</button></div>` + rows.map(r => {
       if (r.t === 'obj') { const ty = r.o.type === 'camera' ? 'câmera' : Object.keys(actionsFor(r.o)).length ? 'animação' : 'keyframe'; return `<div class="crow" data-id="${r.o.id}" style="height:${r.h}px;flex:none;${r.o.id === sel ? 'background:var(--selbg)' : ''}"><span style="width:16px;text-align:center">${ASSETS[r.o.type].icon}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">${esc(r.o.name)}</span><button class="add" data-add="${r.o.id}" title="Adicionar ${ty}">＋</button></div>`; }
       if (r.t === 'grp') return `<div class="crow" style="height:${r.h}px;flex:none;padding-left:30px;color:var(--tx2);font-size:11px">${GROUPS[r.gk].lb}</div>`;
       const c = r.chs[0]; return `<div class="crow" style="height:${r.h}px;flex:none;padding-left:42px;color:var(--tx3);font-size:11px"><span class="cdot" style="background:${CH[c].col}"></span>${CH[c].lb}${GROUPS[CH[c].g].unit ? ' ' + GROUPS[CH[c].g].unit : ''}</div>`;
@@ -353,3 +355,5 @@ $('#tlZoom').oninput = e => { const z = +e.target.value / 100, full = project.du
 $('#iLinear').onclick = () => applyInterp('linear'); $('#iBezier').onclick = () => applyInterp('auto'); $('#iEase').onclick = () => applyInterp('ease'); $('#iEaseIn').onclick = () => applyInterp('easein'); $('#iEaseOut').onclick = () => applyInterp('easeout'); $('#iHold').onclick = () => applyInterp('hold');
 $('#iFit').onclick = () => { if (tl.mode === 'graph') fitGraph(); fitTime(); };
 $('#iDel').onclick = () => deleteSelKeys();
+
+chanList.addEventListener('change', e => { if (e.target.id === 'tlOnlyAnim') { tlOnlyAnim = e.target.checked; renderChanList(); tlDirty = true; } });

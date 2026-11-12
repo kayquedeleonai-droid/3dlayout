@@ -108,7 +108,7 @@ function renderInspector() {
   let h = `<div class="ph" style="padding-top:2px">${d.icon} ${esc(d.label)}<span class="grow"></span><button class="ghost" data-act="dup" title="Duplicar (Ctrl+D)">⧉</button><button class="ghost" data-act="del" title="Apagar (Delete)">🗑</button></div>`;
   h += `<div style="padding:10px 10px 4px"><input type="text" id="objName" value="${esc(o.name)}" style="width:100%;font-weight:600"></div>`;
   h += `<div class="hint" id="dimLine" style="padding:0 10px;margin:2px 0 4px"></div>`;
-  h += `<div style="padding:4px 10px 10px"><button class="${pilot.on && pilot.id === o.id ? 'rec' : 'pri'}" data-act="pilot" style="width:100%;padding:7px">${pilot.on && pilot.id === o.id ? '■ Parar de pilotar (Esc)' : '🎮 Pilotar e gravar movimento (P)'}</button></div>`;
+  h += `<div style="padding:4px 10px 10px"><button class="${pilot.on && pilot.id === o.id ? 'rec' : 'pri'}" data-act="pilot" style="width:100%;padding:7px">${pilot.on && pilot.id === o.id ? '■ Parar de pilotar (Esc)' : ic('gamepad', 15) + '<span>Pilotar e gravar movimento (P)</span>'}</button></div>`;
   // transformação
   if (isCam) {
     const act = project.activeCamera === o.id;

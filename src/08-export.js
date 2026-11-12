@@ -213,7 +213,7 @@ function demoProject() {
    INICIALIZAÇÃO
    ============================================================ */
 function init() {
-  initRealcarUI(); initThumbs(); initCinemaUI(); initModelUI(); initRoadUI(); initMeasureUI(); initGearUI(); initSpeedUI();
+  initRealcarUI(); initThumbs(); initCinemaUI(); initModelUI(); initRoadUI(); initMeasureUI(); initGearUI(); initSpeedUI(); applyFlatUI();
   renderAssets();
   let loaded = false;
   try { const s = localStorage.getItem('layout3d.autosave'); if (s) { const d = JSON.parse(s); if (d && d.objects && d.objects.length) { loadProjectData(d); loaded = true; toast('Sessão anterior restaurada'); } } } catch (e) { }
