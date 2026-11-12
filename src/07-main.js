@@ -58,7 +58,7 @@ function renderViewport(dt) {
   }
   if (pilot.rec) { octx.fillStyle = '#e8584f'; octx.beginPath(); octx.arc(w - 22, h - 22, 7, 0, 7); octx.fill(); octx.font = '600 12px Inter'; octx.textAlign = 'right'; octx.fillText('REC', w - 34, h - 18); octx.textAlign = 'left'; }
   const info = [];
-  info.push(`<b>${viewIsCam() ? 'CÂMERA' : 'LIVRE'}</b> · ${renderMode === 'shaded' ? 'playblast' : renderMode}`);
+  info.push(`<b>${viewIsCam() ? 'CÂMERA' : 'LIVRE'}</b> · ${renderMode === 'shaded' ? 'playblast' : renderMode === 'read' ? 'playblast · leitura' : renderMode}`);
   if (sel && getObj(sel)) info.push(esc(getObj(sel).name));
   updateLabels(camView, w, h); drawAxes(); updateLensBar(camView);
   const pipEl = $('#pip'), wantPip = !camView && project.objects.some(o => o.type === 'camera'); if ((pipEl.style.display !== 'none') !== wantPip) pipEl.style.display = wantPip ? '' : 'none';

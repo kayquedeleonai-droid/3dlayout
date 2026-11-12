@@ -248,7 +248,8 @@ kbd{font-family:var(--mono);background:var(--bg3);border:1px solid var(--line2);
     </div>
     <div class="grow"></div>
     <select id="selRender" title="Modo de render">
-      <option value="shaded">Playblast</option>
+      <option value="read" selected>Playblast · leitura</option>
+      <option value="shaded">Playblast · cores reais</option>
       <option value="clay">Clay</option>
       <option value="depth">Depth</option>
       <option value="normal">Normal</option>
@@ -993,7 +994,7 @@ def('terrain', {
   cat: 'Natureza', label: 'Terreno', icon: '⛰️',
   params: [P('size', 'Tamanho (m)', 'num', 300, { min: 20, max: 2000, step: 10 }), P('height', 'Altura (m)', 'num', 30, { min: 0, max: 300, step: 1 }), P('feature', 'Escala do relevo', 'num', 120, { min: 10, max: 1000, step: 5 }), P('flat', 'Área plana central (m)', 'num', 40, { min: 0, max: 500, step: 5 }), P('color', 'Cor', 'color', '#6f7d5a'), P('seed', 'Semente', 'int', 9, { min: 1, max: 9999, step: 1 })],
   build(p) {
-    const g = new THREE.Group(), seg = 140, geo = new THREE.PlaneGeometry(p.size, p.size, seg, seg); geo.rotateX(-Math.PI / 2);
+    const g = new THREE.Group(), seg = clamp(Math.round(p.size / 5), 140, 400), geo = new THREE.PlaneGeometry(p.size, p.size, seg, seg); geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
     for (let i = 0; i < pos.count; i++) { const x = pos.getX(i), z = pos.getZ(i), d = Math.hypot(x, z); const m = p.flat > 0 ? clamp((d - p.flat / 2) / (p.flat * 0.8 + 1), 0, 1) : 1; const s = m * m * (3 - 2 * m); pos.setY(i, (fbm(x / p.feature + 50, z / p.feature + 50, p.seed, 5) - 0.35) * p.height * 2 * s - 0.05); }
     geo.computeVertexNormals(); const me = mesh(geo, M(p.color, { r: .95 }), 0, 0, 0, g); return g;
@@ -1662,6 +1663,31 @@ const SEG_COLORS = ['#ff3b30', '#34c759', '#007aff', '#ffcc00', '#af52de', '#ff9
    OBJETOS EM TEMPO DE EXECUÇÃO
    ============================================================ */
 const rt = new Map(); // id -> {g, radius}
+/* ---------- modo LEITURA: separa herói / pista / fundo por tom, com perspectiva atmosférica ---------- */
+const _readMats = new Map(); let _readFog = null;
+const HERO_PL = ['car', 'walker', 'bird'];
+function readCat(o) { const t = o.type, A = ASSETS[t]; if (A.pilot && HERO_PL.includes(A.pilot) || isQuadType(t) || t === 'realcar' || t === 'crowd' || t === 'parked') return 'hero'; if (t === 'roadpath' || t === 'road' || t === 'street' || t === 'barrier' || t === 'cone') return 'road'; return 'env'; }
+function readMat(m, cat) {
+  if (Array.isArray(m)) return m.map(x => readMat(x, cat));
+  if (!m || !m.color) return m; const k = m.uuid + cat; let r = _readMats.get(k); if (r) return r;
+  r = m.clone(); const c = r.color, hsl = {}; c.getHSL(hsl); const sky = readHaze();
+  if (cat === 'hero') { c.setHSL(hsl.h, Math.min(1, hsl.s * 1.25 + 0.05), clamp(hsl.l * 1.05, 0.12, 0.85)); if (r.emissive) { r.emissive = r.emissive.clone().add(c.clone().multiplyScalar(0.12)); } }
+  else if (cat === 'road') { if (hsl.l < 0.32 && hsl.s < 0.25) c.set('#202124'); else if (hsl.l < 0.55 && hsl.s < 0.2) c.set('#5d6066'); else if (hsl.s > 0.25 && hsl.h < 0.2) c.setHSL(hsl.h, hsl.s, Math.min(0.75, hsl.l * 1.1)); else if (hsl.l > 0.6) c.setHSL(hsl.h, hsl.s, 0.9); else c.setHSL(hsl.h, hsl.s * 0.4, hsl.l).lerp(sky, 0.25); }
+  else { c.setHSL(hsl.h, hsl.s * 0.4, clamp(hsl.l * 0.85 + 0.12, 0, 0.8)).lerp(sky, 0.3); r.roughness = 1; r.metalness = 0; }
+  _readMats.set(k, r); return r;
+}
+function readHaze() { return new THREE.Color('#c3cad3').lerp(new THREE.Color(project.settings.bg2 || '#cfd6dd'), 0.2); }
+let _readFogCol = null;
+function readSwap(cam) {
+  const sw = [];
+  for (const o of project.objects) { const r = rt.get(o.id); if (!r || !r.g.visible) continue; const cat = readCat(o); r.g.traverse(n => { if (n.isMesh && !n.userData.helper && n.material) { sw.push([n, n.material]); n.material = readMat(n.material, cat); } }); }
+  ground.material = ground.userData.readMat || (ground.userData.readMat = readMat(groundMatOrig, 'env'));
+  if (scene.fog && scene.fog.density != null) { _readFog = scene.fog.density; _readFogCol = scene.fog.color.clone(); scene.fog.color.copy(readHaze()); scene.fog.density = Math.max(0.0012, scene.fog.density * 2.2); }
+  return sw;
+}
+function readRestore() { if (_readFog != null && scene.fog) { scene.fog.density = _readFog; if (_readFogCol) scene.fog.color.copy(_readFogCol); } _readFog = null; }
+function readReset() { for (const m of _readMats.values()) m.dispose && m.dispose(); _readMats.clear(); if (ground.userData.readMat) { ground.userData.readMat = null; } }
+let _skipConform = false;
 function buildRuntime(o) {
   const old = rt.get(o.id); if (old) { world.remove(old.g); disposeGroup(old.g); }
   const d = ASSETS[o.type];
@@ -1678,6 +1704,7 @@ function buildRuntime(o) {
   const radius = bb.isEmpty() ? 0.6 : Math.max(0.4, bb.getSize(new THREE.Vector3()).length() / 2);
   world.add(g);
   rt.set(o.id, { g, helpers, radius, segHex, rig: g.userData.rig, p, size: bb.isEmpty() ? null : bb.getSize(new THREE.Vector3()) });
+  if (!_skipConform) { if (o.type === 'terrain') conformTerrain(o); else if (o.type === 'roadpath' && project.objects.some(x => x.type === 'terrain')) conformAllTerrain(); }
   return rt.get(o.id);
 }
 function isHelperNode(n) { let x = n; while (x) { if (x.userData && x.userData.helper) return true; x = x.parent; } return false; }
@@ -1693,6 +1720,7 @@ function gradientTex(top, bottom) {
   if (_bgTex) _bgTex.dispose(); _bgTex = new THREE.CanvasTexture(c); _bgTex.colorSpace = THREE.SRGBColorSpace; _bgKey = key; return _bgTex;
 }
 function applyEnv() {
+  if (typeof readReset === 'function') readReset();
   const s = project.settings;
   scene.background = gradientTex(s.sky, s.bg2 || s.sky);
   scene.fog = s.fog > 0 ? new THREE.FogExp2(s.bg2 || s.sky, s.fog * 0.25) : null;
@@ -1826,6 +1854,7 @@ function renderScene(rend, cam, mode, w, h, vx = 0, vy = 0, target = null) {
   if (mode === 'clay') scene.overrideMaterial = clayMat;
   else if (mode === 'normal') { scene.overrideMaterial = normalMat; scene.background = new THREE.Color('#8080ff'); scene.fog = null; }
   else if (mode === 'depth') { scene.overrideMaterial = depthMat; depthMat.uniforms.near.value = cam.near; scene.background = new THREE.Color('#000'); scene.fog = null; }
+  else if (mode === 'read') swapped = readSwap(cam);
   else if (mode === 'seg') {
     swapped = []; scene.background = new THREE.Color('#000'); scene.fog = null;
     ground.material = ground.userData.segMat || (ground.userData.segMat = segMat('#404040'));
@@ -1839,6 +1868,7 @@ function renderScene(rend, cam, mode, w, h, vx = 0, vy = 0, target = null) {
   }
   scene.overrideMaterial = null; scene.background = bg; scene.fog = fog;
   if (swapped) { for (const [n, m] of swapped) n.material = m; ground.material = groundMatOrig; }
+  if (mode === 'read') readRestore();
 }
 const groundMatOrig = ground.material;
 
@@ -1979,7 +2009,7 @@ renderer.domElement.addEventListener('wheel', e => { if (pilot.on && pilot.kind 
 /* ============================================================
    ESTADO DE UI
    ============================================================ */
-let curFrame = 0, playing = false, loop = true, sel = null, viewMode = 'free', renderMode = 'shaded';
+let curFrame = 0, playing = false, loop = true, sel = null, viewMode = 'free', renderMode = 'read';
 let gizmoDragging = false, tlDirty = true, inspDirty = true, showPath = true, showGuides = true;
 const selKeys = new Set(); // objetos key selecionados {o, ch, k}
 
@@ -2687,7 +2717,7 @@ function renderViewport(dt) {
   }
   if (pilot.rec) { octx.fillStyle = '#e8584f'; octx.beginPath(); octx.arc(w - 22, h - 22, 7, 0, 7); octx.fill(); octx.font = '600 12px Inter'; octx.textAlign = 'right'; octx.fillText('REC', w - 34, h - 18); octx.textAlign = 'left'; }
   const info = [];
-  info.push(`<b>${viewIsCam() ? 'CÂMERA' : 'LIVRE'}</b> · ${renderMode === 'shaded' ? 'playblast' : renderMode}`);
+  info.push(`<b>${viewIsCam() ? 'CÂMERA' : 'LIVRE'}</b> · ${renderMode === 'shaded' ? 'playblast' : renderMode === 'read' ? 'playblast · leitura' : renderMode}`);
   if (sel && getObj(sel)) info.push(esc(getObj(sel).name));
   updateLabels(camView, w, h); drawAxes(); updateLensBar(camView);
   const pipEl = $('#pip'), wantPip = !camView && project.objects.some(o => o.type === 'camera'); if ((pipEl.style.display !== 'none') !== wantPip) pipEl.style.display = wantPip ? '' : 'none';
@@ -2889,7 +2919,7 @@ $('#bExport').onclick = () => {
   openModal('Exportar', `<div class="mgrid">
     <label>Formato</label><select id="exKind"><option value="video">Vídeo da câmera (MP4/WebM)</option><option value="png">Imagem PNG (frame atual)</option><option value="passes">Pacote de passes (vídeos shaded + depth + seg)</option><option value="glb">Cena animada GLB (Blender / Unreal / C4D)</option><option value="camjson">Dados da câmera por frame (JSON)</option><option value="project">Projeto Layout3D (JSON)</option></select>
     <label>Câmera</label><select id="exCam">${project.shots && project.shots.length ? '<option value="__cut" selected>🎬 Edição com cortes (' + project.shots.length + ' planos)</option>' : ''}${cams.map(c => `<option value="${c.id}" ${c.id === project.activeCamera && !(project.shots && project.shots.length) ? 'selected' : ''}>${esc(c.name)}</option>`).join('') || '<option value="">(nenhuma)</option>'}</select>
-    <label>Passe de render</label><select id="exPass"><option value="shaded">Playblast</option><option value="clay">Clay</option><option value="depth">Depth (perto = branco)</option><option value="normal">Normal</option><option value="seg">Segmentação</option></select>
+    <label>Passe de render</label><select id="exPass"><option value="read">Playblast · leitura</option><option value="shaded">Playblast · cores reais</option><option value="clay">Clay</option><option value="depth">Depth (perto = branco)</option><option value="normal">Normal</option><option value="seg">Segmentação</option></select>
     <label>Resolução</label><select id="exRes"><option value="540">540p</option><option value="720">720p</option><option value="1080" selected>1080p</option><option value="1440">1440p</option><option value="2160">4K</option></select>
     <label>Simular óptica</label><label style="display:flex;gap:6px;align-items:center;color:var(--tx)"><input type="checkbox" id="exFX" checked> DOF, distorção e vinheta da lente (só Playblast/Clay)</label>
     <label>Frames</label><span><input id="exF0" type="number" value="0" style="width:70px"> até <input id="exF1" type="number" value="${project.duration}" style="width:70px"> <span class="hint">(${project.fps} fps, ${project.aspect})</span></span>
@@ -4531,8 +4561,8 @@ function buildRoadPath(p, g) {
   const skirtW = (s) => isBridge(s) ? 0 : Math.abs(s.y) * 1.6 + (Math.abs(s.y) > 0.05 ? 0.6 : 0);
   if (S.some(s => Math.abs(s.y) > 0.05)) {
     const yTop = p.sidewalk ? lift + 0.15 : lift;
-    strip(dirt, (s) => [E, yTop], (s) => [E + skirtW(s), isBridge(s) ? yTop - 0.9 : -s.y + 0.005]);
-    strip(dirt, (s) => [-E - skirtW(s), isBridge(s) ? yTop - 0.9 : -s.y + 0.005], (s) => [-E, yTop]);
+    const k1 = strip(dirt, (s) => [E, yTop], (s) => [E + skirtW(s), isBridge(s) ? yTop - 0.9 : -s.y + 0.005]);
+    const k2 = strip(dirt, (s) => [-E - skirtW(s), isBridge(s) ? yTop - 0.9 : -s.y + 0.005], (s) => [-E, yTop]); if (k1) k1.userData.skirt = true; if (k2) k2.userData.skirt = true;
     // laje do viaduto vista de baixo
     let i0 = null; for (let i = 0; i < S.length; i++) { const b = isBridge(S[i]); if (b && i0 === null) i0 = i; if ((!b || i === S.length - 1) && i0 !== null) { strip(conc, () => [E, -0.9], () => [-E, -0.9], i0, Math.max(i0 + 1, i)); i0 = null; } }
     // pilares
@@ -4581,12 +4611,14 @@ function groundAt(x, z, prevH) {
     const lat = Math.abs((x - s.x) * s.rx + (z - s.z) * s.rz);
     const reach = R.E + Math.abs(s.y) * 1.6 + 0.6; if (lat > reach) continue;
     let h;
-    if (lat <= R.E) h = s.y; else if (s.y > R.bridgeH) continue; else h = lerp(s.y, 0, (lat - R.E) / Math.max(0.01, reach - R.E));
+    if (lat <= R.E) h = s.y; else if (s.y > R.bridgeH || _hasTerrain) continue; else h = lerp(s.y, 0, (lat - R.E) / Math.max(0.01, reach - R.E));
     if (lat < bestD) { bestD = lat; best = h; }
   }
+  if (best == null && _hasTerrain) return terrainAt(x, z);
   return best;
 }
-function hasRoadRelief() { return project.objects.some(o => o.type === 'roadpath' && !o.hidden && roadPts(o.params).some(p => Math.abs(p[1]) > 0.01)); }
+let _hasTerrain = false;
+function hasRoadRelief() { _hasTerrain = project.objects.some(o => o.type === 'terrain' && !o.hidden); return _hasTerrain || project.objects.some(o => o.type === 'roadpath' && !o.hidden && roadPts(o.params).some(p => Math.abs(p[1]) > 0.01)); }
 function followsGround(o) {
   if (o.cons && o.cons.ground === false) return false;
   const pl = ASSETS[o.type] && ASSETS[o.type].pilot; return pl === 'car' || pl === 'walker' || isQuadType(o.type);
@@ -4640,8 +4672,8 @@ renderer.domElement.addEventListener('pointermove', e => {
   }
   rebuildRoad(o, false);
 }, { capture: true });
-renderer.domElement.addEventListener('pointerup', e => { if (!roadDrag) return; roadDrag = null; orbit.enabled = true; downPt = null; commit(); renderInspector(); }, { capture: true });
-function rebuildRoad(o, doCommit) { buildRuntime(o); _roadWorld.delete(o.id); _groundTick++; updateRoadHandles(); bump(); if (doCommit) { commit(); renderInspector(); } }
+renderer.domElement.addEventListener('pointerup', e => { if (!roadDrag) return; conformAllTerrain(); roadDrag = null; orbit.enabled = true; downPt = null; commit(); renderInspector(); }, { capture: true });
+function rebuildRoad(o, doCommit) { _skipConform = !doCommit; buildRuntime(o); _skipConform = false; _roadWorld.delete(o.id); _groundTick++; updateRoadHandles(); bump(); if (doCommit) { commit(); renderInspector(); } }
 /* ---------- inspector ---------- */
 function roadSectionHTML(o) {
   const pts = roadPts(o.params), { S, len } = sampleRoad(o.params);
@@ -5300,12 +5332,13 @@ function commScene() {
   // cenário
   const road = add('roadpath', { name: 'Estrada da serra', params: Object.assign(defaultParams('roadpath'), { lanes: 2, laneW: 3.5, shoulder: 1.2, guard: true, center: 'double', bridge: false, asphalt: '#34363a' }) });
   road.params.pts = COMM_ROAD.map(a => a.slice()); buildRuntime(road);
-  add('terrain', { name: 'Montanhas', params: Object.assign(defaultParams('terrain'), { size: 2000, height: 120, feature: 260, flat: 360, color: '#66704f', seed: 4 }), base: { px: 30, py: -0.06, pz: -60 } });
-  applyFrame(0);
+  add('terrain', { name: 'Montanhas', params: Object.assign(defaultParams('terrain'), { size: 1600, height: 90, feature: 240, flat: 420, color: '#66704f', seed: 4 }), base: { px: 30, py: -0.06, pz: -60 } });
+  applyFrame(0); conformAllTerrain(); applyFrame(0);
+  const gnd = (x, z) => terrainAt(x, z) ?? 0;
   const nearRoad = (x, z, m) => { const L = roadsWorld(); for (const R of L) for (const s of R.S) if ((s.x - x) ** 2 + (s.z - z) ** 2 < m * m) return true; return false; };
   const rnd = mulberry(77);
-  for (let i = 0; i < 60; i++) { const x = -260 + rnd() * 560, z = -330 + rnd() * 520; if (nearRoad(x, z, 26)) continue; add(rnd() < 0.55 ? 'pine' : 'tree', { name: 'Árvore', params: Object.assign(defaultParams(rnd() < 0.55 ? 'pine' : 'tree'), { height: 8 + rnd() * 9, seed: (rnd() * 999) | 0 }), base: { px: x, pz: z, ry: rnd() * 360 } }); }
-  for (let i = 0; i < 16; i++) { const x = 150 + rnd() * 160, z = -40 + rnd() * 200; if (nearRoad(x, z, 18)) continue; add('rock', { name: 'Rocha', params: Object.assign(defaultParams('rock'), { size: 2 + rnd() * 5, seed: (rnd() * 999) | 0 }), base: { px: x, pz: z } }); }
+  for (let i = 0; i < 60; i++) { const x = -260 + rnd() * 560, z = -330 + rnd() * 520; if (nearRoad(x, z, 26)) continue; add(rnd() < 0.55 ? 'pine' : 'tree', { name: 'Árvore', params: Object.assign(defaultParams(rnd() < 0.55 ? 'pine' : 'tree'), { height: 8 + rnd() * 9, seed: (rnd() * 999) | 0 }), base: { px: x, py: gnd(x, z) - 0.1, pz: z, ry: rnd() * 360 } }); }
+  for (let i = 0; i < 16; i++) { const x = 150 + rnd() * 160, z = -40 + rnd() * 200; if (nearRoad(x, z, 18)) continue; add('rock', { name: 'Rocha', params: Object.assign(defaultParams('rock'), { size: 2 + rnd() * 5, seed: (rnd() * 999) | 0 }), base: { px: x, py: gnd(x, z) - 0.3, pz: z } }); }
   // carro herói: Porsche 911, faixa da direita, pilotagem realista até 150 km/h
   const car = add('realcar', { name: 'Porsche 911 (herói)', params: Object.assign(carDefaults('p911'), { modelName: CAR_DB.p911.name, color: '#c8102e' }) });
   buildRuntime(car); roadFollow(road, car, 220, 1, 1, 0, 0, true); // traçado completo da estrada; o tempo vem do perfil abaixo
@@ -5382,6 +5415,62 @@ function buildSportsCommercial() {
   project.shots.forEach((s, i) => { const o = getObj(s.cam); o.name = String(i + 1).padStart(2, '0') + o.name.slice(2); });
   rebuildAll(); applyFrame(0); commit(); renderOutliner(); renderInspector(); tlDirty = true; renderViewSel(); setView('cam');
   return { car, camcar };
+}
+
+/* ============================================================
+   TERRENO QUE RESPEITA A ESTRADA
+   O relevo é cortado/aterrado ao longo de cada estrada (corte e aterro com talude),
+   então o carro nunca "entra" na montanha. Objetos ficam apoiados no terreno.
+   ============================================================ */
+function baseMatrixOf(o) {
+  const b = o.base, m = new THREE.Matrix4();
+  m.compose(new THREE.Vector3(b.px || 0, b.py || 0, b.pz || 0), new THREE.Quaternion().setFromEuler(new THREE.Euler((b.rx || 0) * DEG, (b.ry || 0) * DEG, (b.rz || 0) * DEG, 'YXZ')), new THREE.Vector3(b.sx || 1, b.sy || 1, b.sz || 1));
+  return m;
+}
+function roadSamplesWorld(o) { // amostras da estrada no mundo a partir da pose base (estradas não costumam ser animadas)
+  const r = rt.get(o.id); if (!r || !r.g.userData.road) return null; const R = r.g.userData.road, m = baseMatrixOf(o), v = new THREE.Vector3(), sc = o.base.sx || 1;
+  return { S: R.S.map(s => { v.set(s.x, s.y, s.z).applyMatrix4(m); return { x: v.x, y: v.y, z: v.z }; }), E: R.E * sc, bridge: o.params.bridge };
+}
+function conformTerrain(t) {
+  const r = rt.get(t.id); if (!r) return; const me = r.g.children.find(c => c.isMesh); if (!me) return;
+  const geo = me.geometry, pos = geo.attributes.position;
+  if (!geo.userData.natY) { const a = new Float32Array(pos.count); for (let i = 0; i < pos.count; i++) a[i] = pos.getY(i); geo.userData.natY = a; }
+  const nat = geo.userData.natY, roads = project.objects.filter(o => o.type === 'roadpath' && !o.hidden).map(roadSamplesWorld).filter(Boolean);
+  for (let i = 0; i < pos.count; i++) pos.setY(i, nat[i]);
+  if (roads.length) {
+    const CELL = 24, grid = new Map(), key = (x, z) => Math.floor(x / CELL) + ',' + Math.floor(z / CELL);
+    roads.forEach((R, ri) => R.S.forEach(s => { const k = key(s.x, s.z); if (!grid.has(k)) grid.set(k, []); grid.get(k).push([s, R]); }));
+    const m = baseMatrixOf(t), inv = m.clone().invert(), v = new THREE.Vector3(), ty = t.base.py || 0, sy = t.base.sy || 1;
+    for (let i = 0; i < pos.count; i++) {
+      v.set(pos.getX(i), nat[i], pos.getZ(i)).applyMatrix4(m);
+      const cx = Math.floor(v.x / CELL), cz = Math.floor(v.z / CELL); let best = null, bd = 1e9;
+      for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) { const L = grid.get((cx + a) + ',' + (cz + b)); if (!L) continue; for (const [s, R] of L) { const d = (s.x - v.x) ** 2 + (s.z - v.z) ** 2; if (d < bd) { bd = d; best = [s, R]; } } }
+      if (!best) continue; const d = Math.sqrt(bd), [s, R] = best, natW = v.y, flatW = R.E + 2.5;
+      if (R.bridge && s.y > 3 && natW < s.y - 3) continue; // vale sob o viaduto: mantém o relevo
+      const band = Math.max(6, Math.abs(natW - s.y) * 1.6), road = s.y - 0.3;
+      let y; if (d <= flatW) y = road; else if (d < flatW + band) { const u = (d - flatW) / band, k = u * u * (3 - 2 * u); y = lerp(road, natW, k); } else continue;
+      if (R.bridge && s.y > 3) y = Math.min(y, natW);
+      pos.setY(i, (y - ty) / sy);
+    }
+  }
+  pos.needsUpdate = true; geo.computeVertexNormals(); geo.computeBoundingBox(); geo.computeBoundingSphere();
+  // com terreno, os taludes "de papel" da estrada não são necessários
+  for (const o of project.objects) if (o.type === 'roadpath') { const rr = rt.get(o.id); if (rr) rr.g.traverse(n => { if (n.userData.skirt) n.visible = !project.objects.some(x => x.type === 'terrain' && !x.hidden); }); }
+  _terrainCache = null;
+}
+function conformAllTerrain() { for (const o of project.objects) if (o.type === 'terrain') conformTerrain(o); }
+/* altura do terreno em (x, z) do mundo — bilinear na malha */
+let _terrainCache = null;
+function terrainAt(x, z) {
+  if (!_terrainCache) { _terrainCache = []; for (const o of project.objects) { if (o.type !== 'terrain' || o.hidden) continue; const r = rt.get(o.id), me = r && r.g.children.find(c => c.isMesh); if (!me) continue; const p = Object.assign(defaultParams('terrain'), o.params); _terrainCache.push({ o, pos: me.geometry.attributes.position, size: p.size, seg: me.geometry.parameters ? me.geometry.parameters.widthSegments : 140, inv: baseMatrixOf(o).invert(), m: baseMatrixOf(o) }); } }
+  let best = null; const v = new THREE.Vector3();
+  for (const T of _terrainCache) {
+    v.set(x, 0, z).applyMatrix4(T.inv); const h = T.size / 2, c = T.size / T.seg; if (Math.abs(v.x) > h || Math.abs(v.z) > h) continue;
+    const fx = (v.x + h) / c, fz = (v.z + h) / c, ix = Math.min(T.seg - 1, Math.floor(fx)), iz = Math.min(T.seg - 1, Math.floor(fz)), u = fx - ix, w = fz - iz, n = T.seg + 1, Y = (a, b) => T.pos.getY(b * n + a);
+    const yl = lerp(lerp(Y(ix, iz), Y(ix + 1, iz), u), lerp(Y(ix, iz + 1), Y(ix + 1, iz + 1), u), w);
+    const out = new THREE.Vector3(v.x, yl, v.z).applyMatrix4(T.m).y; best = best == null ? out : Math.max(best, out);
+  }
+  return best;
 }
 
 init();

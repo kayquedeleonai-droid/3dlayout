@@ -67,8 +67,8 @@ function buildRoadPath(p, g) {
   const skirtW = (s) => isBridge(s) ? 0 : Math.abs(s.y) * 1.6 + (Math.abs(s.y) > 0.05 ? 0.6 : 0);
   if (S.some(s => Math.abs(s.y) > 0.05)) {
     const yTop = p.sidewalk ? lift + 0.15 : lift;
-    strip(dirt, (s) => [E, yTop], (s) => [E + skirtW(s), isBridge(s) ? yTop - 0.9 : -s.y + 0.005]);
-    strip(dirt, (s) => [-E - skirtW(s), isBridge(s) ? yTop - 0.9 : -s.y + 0.005], (s) => [-E, yTop]);
+    const k1 = strip(dirt, (s) => [E, yTop], (s) => [E + skirtW(s), isBridge(s) ? yTop - 0.9 : -s.y + 0.005]);
+    const k2 = strip(dirt, (s) => [-E - skirtW(s), isBridge(s) ? yTop - 0.9 : -s.y + 0.005], (s) => [-E, yTop]); if (k1) k1.userData.skirt = true; if (k2) k2.userData.skirt = true;
     // laje do viaduto vista de baixo
     let i0 = null; for (let i = 0; i < S.length; i++) { const b = isBridge(S[i]); if (b && i0 === null) i0 = i; if ((!b || i === S.length - 1) && i0 !== null) { strip(conc, () => [E, -0.9], () => [-E, -0.9], i0, Math.max(i0 + 1, i)); i0 = null; } }
     // pilares
@@ -117,12 +117,14 @@ function groundAt(x, z, prevH) {
     const lat = Math.abs((x - s.x) * s.rx + (z - s.z) * s.rz);
     const reach = R.E + Math.abs(s.y) * 1.6 + 0.6; if (lat > reach) continue;
     let h;
-    if (lat <= R.E) h = s.y; else if (s.y > R.bridgeH) continue; else h = lerp(s.y, 0, (lat - R.E) / Math.max(0.01, reach - R.E));
+    if (lat <= R.E) h = s.y; else if (s.y > R.bridgeH || _hasTerrain) continue; else h = lerp(s.y, 0, (lat - R.E) / Math.max(0.01, reach - R.E));
     if (lat < bestD) { bestD = lat; best = h; }
   }
+  if (best == null && _hasTerrain) return terrainAt(x, z);
   return best;
 }
-function hasRoadRelief() { return project.objects.some(o => o.type === 'roadpath' && !o.hidden && roadPts(o.params).some(p => Math.abs(p[1]) > 0.01)); }
+let _hasTerrain = false;
+function hasRoadRelief() { _hasTerrain = project.objects.some(o => o.type === 'terrain' && !o.hidden); return _hasTerrain || project.objects.some(o => o.type === 'roadpath' && !o.hidden && roadPts(o.params).some(p => Math.abs(p[1]) > 0.01)); }
 function followsGround(o) {
   if (o.cons && o.cons.ground === false) return false;
   const pl = ASSETS[o.type] && ASSETS[o.type].pilot; return pl === 'car' || pl === 'walker' || isQuadType(o.type);
@@ -176,8 +178,8 @@ renderer.domElement.addEventListener('pointermove', e => {
   }
   rebuildRoad(o, false);
 }, { capture: true });
-renderer.domElement.addEventListener('pointerup', e => { if (!roadDrag) return; roadDrag = null; orbit.enabled = true; downPt = null; commit(); renderInspector(); }, { capture: true });
-function rebuildRoad(o, doCommit) { buildRuntime(o); _roadWorld.delete(o.id); _groundTick++; updateRoadHandles(); bump(); if (doCommit) { commit(); renderInspector(); } }
+renderer.domElement.addEventListener('pointerup', e => { if (!roadDrag) return; conformAllTerrain(); roadDrag = null; orbit.enabled = true; downPt = null; commit(); renderInspector(); }, { capture: true });
+function rebuildRoad(o, doCommit) { _skipConform = !doCommit; buildRuntime(o); _skipConform = false; _roadWorld.delete(o.id); _groundTick++; updateRoadHandles(); bump(); if (doCommit) { commit(); renderInspector(); } }
 /* ---------- inspector ---------- */
 function roadSectionHTML(o) {
   const pts = roadPts(o.params), { S, len } = sampleRoad(o.params);

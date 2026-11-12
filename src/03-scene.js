@@ -42,6 +42,31 @@ const SEG_COLORS = ['#ff3b30', '#34c759', '#007aff', '#ffcc00', '#af52de', '#ff9
    OBJETOS EM TEMPO DE EXECUÇÃO
    ============================================================ */
 const rt = new Map(); // id -> {g, radius}
+/* ---------- modo LEITURA: separa herói / pista / fundo por tom, com perspectiva atmosférica ---------- */
+const _readMats = new Map(); let _readFog = null;
+const HERO_PL = ['car', 'walker', 'bird'];
+function readCat(o) { const t = o.type, A = ASSETS[t]; if (A.pilot && HERO_PL.includes(A.pilot) || isQuadType(t) || t === 'realcar' || t === 'crowd' || t === 'parked') return 'hero'; if (t === 'roadpath' || t === 'road' || t === 'street' || t === 'barrier' || t === 'cone') return 'road'; return 'env'; }
+function readMat(m, cat) {
+  if (Array.isArray(m)) return m.map(x => readMat(x, cat));
+  if (!m || !m.color) return m; const k = m.uuid + cat; let r = _readMats.get(k); if (r) return r;
+  r = m.clone(); const c = r.color, hsl = {}; c.getHSL(hsl); const sky = readHaze();
+  if (cat === 'hero') { c.setHSL(hsl.h, Math.min(1, hsl.s * 1.25 + 0.05), clamp(hsl.l * 1.05, 0.12, 0.85)); if (r.emissive) { r.emissive = r.emissive.clone().add(c.clone().multiplyScalar(0.12)); } }
+  else if (cat === 'road') { if (hsl.l < 0.32 && hsl.s < 0.25) c.set('#202124'); else if (hsl.l < 0.55 && hsl.s < 0.2) c.set('#5d6066'); else if (hsl.s > 0.25 && hsl.h < 0.2) c.setHSL(hsl.h, hsl.s, Math.min(0.75, hsl.l * 1.1)); else if (hsl.l > 0.6) c.setHSL(hsl.h, hsl.s, 0.9); else c.setHSL(hsl.h, hsl.s * 0.4, hsl.l).lerp(sky, 0.25); }
+  else { c.setHSL(hsl.h, hsl.s * 0.4, clamp(hsl.l * 0.85 + 0.12, 0, 0.8)).lerp(sky, 0.3); r.roughness = 1; r.metalness = 0; }
+  _readMats.set(k, r); return r;
+}
+function readHaze() { return new THREE.Color('#c3cad3').lerp(new THREE.Color(project.settings.bg2 || '#cfd6dd'), 0.2); }
+let _readFogCol = null;
+function readSwap(cam) {
+  const sw = [];
+  for (const o of project.objects) { const r = rt.get(o.id); if (!r || !r.g.visible) continue; const cat = readCat(o); r.g.traverse(n => { if (n.isMesh && !n.userData.helper && n.material) { sw.push([n, n.material]); n.material = readMat(n.material, cat); } }); }
+  ground.material = ground.userData.readMat || (ground.userData.readMat = readMat(groundMatOrig, 'env'));
+  if (scene.fog && scene.fog.density != null) { _readFog = scene.fog.density; _readFogCol = scene.fog.color.clone(); scene.fog.color.copy(readHaze()); scene.fog.density = Math.max(0.0012, scene.fog.density * 2.2); }
+  return sw;
+}
+function readRestore() { if (_readFog != null && scene.fog) { scene.fog.density = _readFog; if (_readFogCol) scene.fog.color.copy(_readFogCol); } _readFog = null; }
+function readReset() { for (const m of _readMats.values()) m.dispose && m.dispose(); _readMats.clear(); if (ground.userData.readMat) { ground.userData.readMat = null; } }
+let _skipConform = false;
 function buildRuntime(o) {
   const old = rt.get(o.id); if (old) { world.remove(old.g); disposeGroup(old.g); }
   const d = ASSETS[o.type];
@@ -58,6 +83,7 @@ function buildRuntime(o) {
   const radius = bb.isEmpty() ? 0.6 : Math.max(0.4, bb.getSize(new THREE.Vector3()).length() / 2);
   world.add(g);
   rt.set(o.id, { g, helpers, radius, segHex, rig: g.userData.rig, p, size: bb.isEmpty() ? null : bb.getSize(new THREE.Vector3()) });
+  if (!_skipConform) { if (o.type === 'terrain') conformTerrain(o); else if (o.type === 'roadpath' && project.objects.some(x => x.type === 'terrain')) conformAllTerrain(); }
   return rt.get(o.id);
 }
 function isHelperNode(n) { let x = n; while (x) { if (x.userData && x.userData.helper) return true; x = x.parent; } return false; }
@@ -73,6 +99,7 @@ function gradientTex(top, bottom) {
   if (_bgTex) _bgTex.dispose(); _bgTex = new THREE.CanvasTexture(c); _bgTex.colorSpace = THREE.SRGBColorSpace; _bgKey = key; return _bgTex;
 }
 function applyEnv() {
+  if (typeof readReset === 'function') readReset();
   const s = project.settings;
   scene.background = gradientTex(s.sky, s.bg2 || s.sky);
   scene.fog = s.fog > 0 ? new THREE.FogExp2(s.bg2 || s.sky, s.fog * 0.25) : null;
@@ -206,6 +233,7 @@ function renderScene(rend, cam, mode, w, h, vx = 0, vy = 0, target = null) {
   if (mode === 'clay') scene.overrideMaterial = clayMat;
   else if (mode === 'normal') { scene.overrideMaterial = normalMat; scene.background = new THREE.Color('#8080ff'); scene.fog = null; }
   else if (mode === 'depth') { scene.overrideMaterial = depthMat; depthMat.uniforms.near.value = cam.near; scene.background = new THREE.Color('#000'); scene.fog = null; }
+  else if (mode === 'read') swapped = readSwap(cam);
   else if (mode === 'seg') {
     swapped = []; scene.background = new THREE.Color('#000'); scene.fog = null;
     ground.material = ground.userData.segMat || (ground.userData.segMat = segMat('#404040'));
@@ -219,5 +247,6 @@ function renderScene(rend, cam, mode, w, h, vx = 0, vy = 0, target = null) {
   }
   scene.overrideMaterial = null; scene.background = bg; scene.fog = fog;
   if (swapped) { for (const [n, m] of swapped) n.material = m; ground.material = groundMatOrig; }
+  if (mode === 'read') readRestore();
 }
 const groundMatOrig = ground.material;

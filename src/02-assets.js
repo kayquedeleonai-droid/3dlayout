@@ -495,7 +495,7 @@ def('terrain', {
   cat: 'Natureza', label: 'Terreno', icon: '⛰️',
   params: [P('size', 'Tamanho (m)', 'num', 300, { min: 20, max: 2000, step: 10 }), P('height', 'Altura (m)', 'num', 30, { min: 0, max: 300, step: 1 }), P('feature', 'Escala do relevo', 'num', 120, { min: 10, max: 1000, step: 5 }), P('flat', 'Área plana central (m)', 'num', 40, { min: 0, max: 500, step: 5 }), P('color', 'Cor', 'color', '#6f7d5a'), P('seed', 'Semente', 'int', 9, { min: 1, max: 9999, step: 1 })],
   build(p) {
-    const g = new THREE.Group(), seg = 140, geo = new THREE.PlaneGeometry(p.size, p.size, seg, seg); geo.rotateX(-Math.PI / 2);
+    const g = new THREE.Group(), seg = clamp(Math.round(p.size / 5), 140, 400), geo = new THREE.PlaneGeometry(p.size, p.size, seg, seg); geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
     for (let i = 0; i < pos.count; i++) { const x = pos.getX(i), z = pos.getZ(i), d = Math.hypot(x, z); const m = p.flat > 0 ? clamp((d - p.flat / 2) / (p.flat * 0.8 + 1), 0, 1) : 1; const s = m * m * (3 - 2 * m); pos.setY(i, (fbm(x / p.feature + 50, z / p.feature + 50, p.seed, 5) - 0.35) * p.height * 2 * s - 0.05); }
     geo.computeVertexNormals(); const me = mesh(geo, M(p.color, { r: .95 }), 0, 0, 0, g); return g;

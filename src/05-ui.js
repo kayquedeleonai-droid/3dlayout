@@ -1,7 +1,7 @@
 /* ============================================================
    ESTADO DE UI
    ============================================================ */
-let curFrame = 0, playing = false, loop = true, sel = null, viewMode = 'free', renderMode = 'shaded';
+let curFrame = 0, playing = false, loop = true, sel = null, viewMode = 'free', renderMode = 'read';
 let gizmoDragging = false, tlDirty = true, inspDirty = true, showPath = true, showGuides = true;
 const selKeys = new Set(); // objetos key selecionados {o, ch, k}
 

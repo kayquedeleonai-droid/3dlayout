@@ -13,12 +13,13 @@ function commScene() {
   // cenário
   const road = add('roadpath', { name: 'Estrada da serra', params: Object.assign(defaultParams('roadpath'), { lanes: 2, laneW: 3.5, shoulder: 1.2, guard: true, center: 'double', bridge: false, asphalt: '#34363a' }) });
   road.params.pts = COMM_ROAD.map(a => a.slice()); buildRuntime(road);
-  add('terrain', { name: 'Montanhas', params: Object.assign(defaultParams('terrain'), { size: 2000, height: 120, feature: 260, flat: 360, color: '#66704f', seed: 4 }), base: { px: 30, py: -0.06, pz: -60 } });
-  applyFrame(0);
+  add('terrain', { name: 'Montanhas', params: Object.assign(defaultParams('terrain'), { size: 1600, height: 90, feature: 240, flat: 420, color: '#66704f', seed: 4 }), base: { px: 30, py: -0.06, pz: -60 } });
+  applyFrame(0); conformAllTerrain(); applyFrame(0);
+  const gnd = (x, z) => terrainAt(x, z) ?? 0;
   const nearRoad = (x, z, m) => { const L = roadsWorld(); for (const R of L) for (const s of R.S) if ((s.x - x) ** 2 + (s.z - z) ** 2 < m * m) return true; return false; };
   const rnd = mulberry(77);
-  for (let i = 0; i < 60; i++) { const x = -260 + rnd() * 560, z = -330 + rnd() * 520; if (nearRoad(x, z, 26)) continue; add(rnd() < 0.55 ? 'pine' : 'tree', { name: 'Árvore', params: Object.assign(defaultParams(rnd() < 0.55 ? 'pine' : 'tree'), { height: 8 + rnd() * 9, seed: (rnd() * 999) | 0 }), base: { px: x, pz: z, ry: rnd() * 360 } }); }
-  for (let i = 0; i < 16; i++) { const x = 150 + rnd() * 160, z = -40 + rnd() * 200; if (nearRoad(x, z, 18)) continue; add('rock', { name: 'Rocha', params: Object.assign(defaultParams('rock'), { size: 2 + rnd() * 5, seed: (rnd() * 999) | 0 }), base: { px: x, pz: z } }); }
+  for (let i = 0; i < 60; i++) { const x = -260 + rnd() * 560, z = -330 + rnd() * 520; if (nearRoad(x, z, 26)) continue; add(rnd() < 0.55 ? 'pine' : 'tree', { name: 'Árvore', params: Object.assign(defaultParams(rnd() < 0.55 ? 'pine' : 'tree'), { height: 8 + rnd() * 9, seed: (rnd() * 999) | 0 }), base: { px: x, py: gnd(x, z) - 0.1, pz: z, ry: rnd() * 360 } }); }
+  for (let i = 0; i < 16; i++) { const x = 150 + rnd() * 160, z = -40 + rnd() * 200; if (nearRoad(x, z, 18)) continue; add('rock', { name: 'Rocha', params: Object.assign(defaultParams('rock'), { size: 2 + rnd() * 5, seed: (rnd() * 999) | 0 }), base: { px: x, py: gnd(x, z) - 0.3, pz: z } }); }
   // carro herói: Porsche 911, faixa da direita, pilotagem realista até 150 km/h
   const car = add('realcar', { name: 'Porsche 911 (herói)', params: Object.assign(carDefaults('p911'), { modelName: CAR_DB.p911.name, color: '#c8102e' }) });
   buildRuntime(car); roadFollow(road, car, 220, 1, 1, 0, 0, true); // traçado completo da estrada; o tempo vem do perfil abaixo
