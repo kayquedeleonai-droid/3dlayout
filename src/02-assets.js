@@ -17,7 +17,7 @@ const box = (w, h, d, m, x, y, z, p) => mesh(new THREE.BoxGeometry(w, h, d), m, 
 const sph = (r, m, x, y, z, p, ws = 20, hs = 14) => mesh(new THREE.SphereGeometry(r, Math.max(ws, 18), Math.max(hs, 12)), m, x, y, z, p);
 const cyl = (rt, rb, h, m, x, y, z, p, s = 20) => mesh(new THREE.CylinderGeometry(rt, rb, h, Math.max(s, 16)), m, x, y, z, p);
 // elipsoide: semi-eixos rx, ry, rz
-const ell = (rx, ry, rz, m, x, y, z, p) => { const e = mesh(new THREE.SphereGeometry(1, 22, 16), m, x, y, z, p); e.scale.set(rx, ry, rz); return e; };
+const ell = (rx, ry, rz, m, x, y, z, p, ws = 22, hs = 16) => { const e = mesh(new THREE.SphereGeometry(1, ws, hs), m, x, y, z, p); e.scale.set(rx, ry, rz); return e; };
 // membro: cápsula pendurada do pivô para baixo, comprimento L (ponta a ponta ≈ L)
 const limb = (r, L, m, p, r2) => { const g = new THREE.CapsuleGeometry(r, Math.max(0.001, L - r), 6, 14); if (r2 && r2 !== r) { const pos = g.attributes.position; for (let i = 0; i < pos.count; i++) { const t = clamp((pos.getY(i) + L / 2) / L, 0, 1); const s = lerp(r2 / r, 1, t); pos.setX(i, pos.getX(i) * s); pos.setZ(i, pos.getZ(i) * s); } g.computeVertexNormals(); } return mesh(g, m, 0, -L / 2, 0, p); };
 // casco extrudado a partir de um perfil lateral (z,y) com largura W ao longo de X
@@ -140,46 +140,99 @@ def('moto', {
 
 /* ---------------- PESSOAS ---------------- */
 // Proporções antropométricas (frações da altura H, adulto médio)
+/* corpo humano: segmentos torneados (lathe) com seção elíptica — proporções do cânone adulto (~7,5 cabeças), criança com cabeça maior */
+function lathe(profile, mat, parent, sz = 1, segs = 12, y = 0, dome = 0.8) {
+  const pr = profile.slice().sort((a, b) => a[0] - b[0]), f = pchip(pr), y0 = pr[0][0], y1 = pr[pr.length - 1][0], N = 14, pts = [];
+  const r0 = pr[0][1], r1 = pr[pr.length - 1][1];
+  for (let i = 4; i >= 1; i--) { const a = (i / 4) * Math.PI / 2; pts.push(new THREE.Vector2(Math.max(0.0002, r0 * Math.cos(a)), y0 - r0 * dome * Math.sin(a))); }
+  for (let i = 0; i <= N; i++) { const yy = lerp(y0, y1, i / N); pts.push(new THREE.Vector2(Math.max(0.0005, f(yy)), yy)); }
+  for (let i = 1; i <= 4; i++) { const a = (i / 4) * Math.PI / 2; pts.push(new THREE.Vector2(Math.max(0.0002, r1 * Math.cos(a)), y1 + r1 * dome * Math.sin(a))); }
+  const geo = new THREE.LatheGeometry(pts, segs); geo.scale(1, 1, sz); geo.computeVertexNormals();
+  return mesh(geo, mat, 0, y, 0, parent);
+}
+/* junta as malhas estáticas de cada osso por material (menos draw calls: multidões leves) */
+function mergeStatic(root) {
+  const nodes = []; root.traverse(n => { if (!n.isMesh) nodes.push(n); });
+  for (const node of nodes) {
+    const byMat = new Map();
+    for (const c of node.children) if (c.isMesh && !c.children.length && c.geometry.index && c.geometry.attributes.uv) { const k = c.material.uuid; if (!byMat.has(k)) byMat.set(k, []); byMat.get(k).push(c); }
+    for (const list of byMat.values()) {
+      if (list.length < 2) continue;
+      let nv = 0, ni = 0; for (const c of list) { nv += c.geometry.attributes.position.count; ni += c.geometry.index.count; }
+      const P = new Float32Array(nv * 3), N = new Float32Array(nv * 3), U = new Float32Array(nv * 2), I = new Uint32Array(ni); let ov = 0, oi = 0;
+      for (const c of list) {
+        c.updateMatrix(); const gg = c.geometry.clone(); gg.applyMatrix4(c.matrix);
+        P.set(gg.attributes.position.array, ov * 3); N.set(gg.attributes.normal.array, ov * 3); U.set(gg.attributes.uv.array, ov * 2);
+        const ix = gg.index.array; for (let i = 0; i < ix.length; i++) I[oi + i] = ix[i] + ov; ov += gg.attributes.position.count; oi += ix.length;
+        node.remove(c); c.geometry.dispose(); gg.dispose();
+      }
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(P, 3)); geo.setAttribute('normal', new THREE.BufferAttribute(N, 3)); geo.setAttribute('uv', new THREE.BufferAttribute(U, 2)); geo.setIndex(new THREE.BufferAttribute(I, 1));
+      mesh(geo, list[0].material, 0, 0, 0, node);
+    }
+  }
+  return root;
+}
 function buildPerson(p) {
   const H = p.height, g = new THREE.Group(), rig = {};
-  const mq = p.look === 'mannequin';
-  const shirt = M(mq ? '#cbb193' : p.shirt), pants = M(mq ? '#c3a887' : p.pants), skin = M(mq ? '#d2b999' : p.skin), shoe = M(mq ? '#a98d6c' : '#26272b'), hair = M(mq ? '#d2b999' : (p.hair || '#2a1d14'));
-  const kid = H < 1.45 ? clamp((1.45 - H) / 0.6, 0, 1) : 0;       // crianças: cabeça proporcionalmente maior, pernas menores
-  const headH = H * (0.13 + kid * 0.04), b = p.build;              // b: 0 = estreito/feminino … 1 = largo
-  const hipY = H * (0.52 - kid * 0.04), shY = H * (0.818 - kid * 0.03);
-  const torsoL = shY - hipY, shW = H * (0.105 + b * 0.025), hipW = H * (0.088 - b * 0.004);
-  const thigh = hipY * 0.5, shin = hipY * 0.425, ankH = hipY - thigh - shin;
-  const uArm = H * 0.186, fArm = H * 0.146, hand = H * 0.095;
+  const mq = p.look === 'mannequin', fem = p.sex === 'f' || (p.sex == null && p.build < 0.3);
+  const skin = M(mq ? '#d6bd9c' : p.skin, { r: .7 }), shirt = mq ? skin : M(p.shirt, { r: .85 }), pants = mq ? skin : M(p.pants, { r: .9 }), shoe = M(mq ? '#b39675' : '#232427', { r: .6 }), hair = M(mq ? '#d6bd9c' : (p.hair || '#2a1d14'), { r: .9 }), joint = mq ? M('#bfa47f', { r: .7 }) : null;
+  const kid = H < 1.45 ? clamp((1.45 - H) / 0.6, 0, 1) : 0, b = clamp(p.build ?? 0.5, 0, 1);
+  const headH = H * (0.13 + kid * 0.045);
+  const hipY = H * (0.52 - kid * 0.045), shY = H * (0.818 - kid * 0.035);
+  const torsoL = shY - hipY, shW = H * ((fem ? 0.098 : 0.106) + b * 0.022) * (1 - kid * 0.08), hipR = H * (fem ? 0.1 : 0.088) * (0.95 + b * 0.12) * (1 - kid * 0.1);
+  const thigh = hipY * 0.5, shin = hipY * 0.43, ankH = hipY - thigh - shin;
+  const uArm = H * 0.182, fArm = H * 0.148, hand = H * 0.1;
+  const k = 1 + b * 0.35 - (fem ? 0.08 : 0); // espessura dos membros
+  // quadril / pelve
   const hips = grp(0, hipY, 0, g); rig.hips = hips; rig.hipY = hipY;
-  ell(hipW * 1.15, H * 0.055, H * 0.06, pants, 0, H * 0.01, 0, hips);
+  lathe([[-H * 0.075, hipR * 0.35], [-H * 0.055, hipR * 0.8], [-H * 0.02, hipR], [H * 0.03, hipR * 0.95], [H * 0.065, hipR * (fem ? 0.78 : 0.86)]], pants, hips, 0.66);
+  // tronco (gira sobre o quadril)
   const torso = grp(0, H * 0.02, 0, hips); rig.torso = torso;
-  ell(hipW * 1.05, torsoL * 0.32, H * 0.058, shirt, 0, torsoL * 0.25, 0, torso);                 // abdômen
-  ell(shW * 0.98, torsoL * 0.36, H * (0.066 + b * 0.006), shirt, 0, torsoL * 0.62, 0, torso);   // tórax
-  ell(shW * 1.05, H * 0.03, H * 0.05, shirt, 0, torsoL * 0.92, 0, torso);                        // ombros
-  cyl(H * 0.024, H * 0.028, H * 0.06, skin, 0, torsoL + H * 0.015, 0, torso, 16);
-  const head = grp(0, torsoL + H * 0.035 + headH * 0.5, 0, torso); rig.head = head;
-  ell(headH * 0.34, headH * 0.5, headH * 0.42, skin, 0, 0, 0.005 * H, head);
-  ell(headH * 0.36, headH * 0.36, headH * 0.44, hair, 0, headH * 0.14, -headH * 0.04, head);
-  ell(headH * 0.06, headH * 0.09, headH * 0.08, skin, 0, -headH * 0.02, headH * 0.42, head);    // nariz
-  for (const sx of [1, -1]) ell(headH * 0.05, headH * 0.11, headH * 0.06, skin, sx * headH * 0.34, -headH * 0.02, 0, head); // orelhas
+  const wR = H * (fem ? 0.066 : 0.077) * (0.95 + b * 0.15), cR = H * (fem ? 0.088 : 0.098) * (0.94 + b * 0.14), tL = torsoL;
+  lathe([[-H * 0.005, hipR * (fem ? 0.9 : 0.95)], [H * 0.04, hipR * (fem ? 0.84 : 0.9)], [tL * 0.3, wR], [tL * 0.55, cR * 0.96], [tL * 0.72, cR], [tL * 0.86, cR * 0.97], [tL * 0.95, shW * 0.78], [tL * 1.0, H * 0.05], [tL * 1.04, H * 0.03]], shirt, torso, 0.6, 14);
+  if (fem && kid < 0.3) for (const sx of [-1, 1]) { const bu = ell(H * 0.034, H * 0.028, H * 0.017, shirt, sx * H * 0.038, tL * 0.665, cR * 0.5, torso, 14, 10); bu.rotation.y = sx * 0.25; }
+  // trapézio / ombros
+  for (const sx of [-1, 1]) { const tr = ell(shW * 0.55, H * 0.022, H * 0.04, shirt, sx * shW * 0.45, tL * 0.96, -H * 0.005, torso); tr.rotation.z = sx * -0.28; }
+  // pescoço e cabeça
+  const neckR = H * (fem ? 0.024 : 0.028) * (1 + kid * 0.15);
+  lathe([[tL * 0.98, neckR * 1.15], [tL + H * 0.035, neckR], [tL + H * 0.06, neckR * 0.95]], skin, torso, 0.95, 10);
+  const head = grp(0, tL + H * 0.045 + headH * 0.5, 0, torso); rig.head = head;
+  const hw = headH * (fem ? 0.36 : 0.38);
+  ell(hw, headH * 0.42, headH * 0.47, skin, 0, headH * 0.09, -headH * 0.03, head, 20, 14);          // crânio
+  const jaw = ell(hw * (fem ? 0.8 : 0.86), headH * 0.33, headH * 0.36, skin, 0, -headH * 0.15, headH * 0.05, head, 18, 12); // rosto/mandíbula
+  ell(headH * 0.045, headH * 0.1, headH * 0.07, skin, 0, -headH * 0.04, headH * 0.4, head, 8, 6).rotation.x = -0.25; // nariz
+  for (const sx of [-1, 1]) { ell(headH * 0.04, headH * 0.11, headH * 0.065, skin, sx * hw * 0.98, -headH * 0.01, -headH * 0.02, head, 8, 6); }
+  if (!mq) {
+    ell(hw * 1.06, headH * 0.33, headH * 0.5, hair, 0, headH * 0.22, -headH * 0.06, head, 18, 10);
+    if (fem) { const lh = ell(hw * 1.02, headH * 0.55, headH * 0.22, hair, 0, -headH * 0.12, -headH * 0.26, head, 14, 10); lh.rotation.x = 0.12; }
+  }
+  // braços
   rig.arms = []; rig.legs = [];
   for (const sx of [1, -1]) {
-    const shd = grp(sx * shW, torsoL * 0.9, 0, torso);
-    limb(H * 0.03, uArm, shirt, shd, H * 0.026);
+    const shd = grp(sx * shW, tL * 0.92, -H * 0.004, torso);
+    ell(H * 0.034 * k, H * 0.038, H * 0.038 * k, shirt, 0, -H * 0.016, 0, shd, 12, 8);                       // deltoide
+    lathe([[-uArm, H * 0.022 * k], [-uArm * 0.85, H * 0.025 * k], [-uArm * 0.45, H * 0.031 * k], [-uArm * 0.1, H * 0.036 * k], [0, H * 0.03 * k]], shirt, shd, 0.95, 10);
     const elb = grp(0, -uArm, 0, shd);
-    limb(H * 0.022, fArm, skin, elb, H * 0.018);
+    if (joint) ell(H * 0.022 * k, H * 0.022, H * 0.022 * k, joint, 0, 0, 0, elb, 10, 6);
+    lathe([[-fArm, H * 0.016 * k], [-fArm * 0.7, H * 0.019 * k], [-fArm * 0.3, H * 0.026 * k], [-fArm * 0.05, H * 0.024 * k], [0, H * 0.021 * k]], mq ? skin : (p.sleeves === 'short' ? skin : shirt), elb, 0.85, 10);
     const wr = grp(0, -fArm, 0, elb);
-    const hd = ell(H * 0.012, hand * 0.5, H * 0.026, skin, 0, -hand * 0.45, 0, wr);
+    ell(H * 0.016, hand * 0.32, H * 0.034, skin, 0, -hand * 0.3, H * 0.002, wr, 10, 6);                          // palma
+    ell(H * 0.013, hand * 0.25, H * 0.031, skin, 0, -hand * 0.72, H * 0.004, wr, 10, 6);                       // dedos
+    const th = ell(H * 0.009, hand * 0.2, H * 0.01, skin, 0, -hand * 0.3, H * 0.026, wr, 6, 4); th.rotation.x = 0.5;
     rig.arms.push({ s: shd, e: elb, side: sx });
-    const hipJ = grp(sx * hipW * 0.55, 0, 0, hips);
-    limb(H * 0.045, thigh, pants, hipJ, H * 0.034);
+    // pernas
+    const hipJ = grp(sx * hipR * 0.5, 0, 0, hips);
+    lathe([[-thigh, H * 0.033 * k], [-thigh * 0.8, H * 0.039 * k], [-thigh * 0.4, H * 0.05 * k], [-thigh * 0.12, H * 0.057 * k], [H * 0.01, H * 0.05 * k]], pants, hipJ, 0.95, 12);
     const knee = grp(0, -thigh, 0, hipJ);
-    limb(H * 0.032, shin, pants, knee, H * 0.024);
+    if (joint) ell(H * 0.032 * k, H * 0.03, H * 0.032 * k, joint, 0, 0, 0.004 * H, knee, 10, 6);
+    const shinM = lathe([[-shin, H * 0.02 * k], [-shin * 0.8, H * 0.024 * k], [-shin * 0.42, H * 0.035 * k], [-shin * 0.2, H * 0.038 * k], [0, H * 0.033 * k]], pants, knee, 0.95, 12); shinM.position.z = -H * 0.003;
     const ankle = grp(0, -shin, 0, knee);
-    const ft = box(H * 0.055, ankH * 1.0, H * 0.152, shoe, 0, -ankH * 0.5, H * 0.045, ankle);
+    const fl = H * 0.15, fw = H * 0.05;
+    const foot = ell(fw * 0.5, ankH * 0.62, fl * 0.5, shoe, 0, -ankH * 0.42, fl * 0.27, ankle, 14, 8);
+    box(fw * 0.95, ankH * 0.22, fl * 0.95, shoe, 0, -ankH * 0.9, fl * 0.27, ankle);                          // sola
     rig.legs.push({ h: hipJ, k: knee, a: ankle, side: sx });
   }
-  rig.H = H; g.userData.rig = rig; return g;
+  rig.H = H; g.userData.rig = rig; mergeStatic(g); return g;
 }
 function animPerson(rig, c, p, phaseOff = 0) {
   const H = rig.H, sp = Math.abs(c.speed);
@@ -213,9 +266,9 @@ function animPerson(rig, c, p, phaseOff = 0) {
     }
   }
 }
-const personParams = (h, shirt, pants, skin) => [P('look', 'Visual', 'select', 'mannequin', { opts: [['mannequin', 'Manequim'], ['clothes', 'Roupas']] }), P('height', 'Altura (m)', 'num', h, { min: 0.8, max: 2.2, step: .01 }), P('build', 'Porte', 'num', 0.5, { min: 0, max: 1, step: .05 }), P('shirt', 'Camisa', 'color', shirt), P('pants', 'Calça', 'color', pants), P('skin', 'Pele', 'color', skin), P('hair', 'Cabelo', 'color', '#2a1d14'), P('pose', 'Pose parado', 'select', 'stand', { opts: [['stand', 'Em pé'], ['sit', 'Sentado'], ['wave', 'Acenando'], ['phone', 'Ao telefone'], ['cross', 'Braços cruzados'], ['point', 'Apontando']] }), P('walk', 'Vel. andar (m/s)', 'num', 1.4, { min: .3, max: 3, step: .1 }), P('run', 'Vel. correr (m/s)', 'num', 4.5, { min: 2, max: 10, step: .1 })];
+const personParams = (h, shirt, pants, skin) => [P('look', 'Visual', 'select', 'mannequin', { opts: [['mannequin', 'Manequim'], ['clothes', 'Roupas']] }), P('height', 'Altura (m)', 'num', h, { min: 0.8, max: 2.2, step: .01 }), P('build', 'Porte', 'num', 0.5, { min: 0, max: 1, step: .05 }), P('shirt', 'Camisa', 'color', shirt), P('pants', 'Calça', 'color', pants), P('skin', 'Pele', 'color', skin), P('hair', 'Cabelo', 'color', '#2a1d14'), P('sex', 'Corpo', 'select', 'm', { opts: [['m', 'Masculino'], ['f', 'Feminino']] }), P('sleeves', 'Mangas', 'select', 'long', { opts: [['long', 'Compridas'], ['short', 'Curtas']] }), P('pose', 'Pose parado', 'select', 'stand', { opts: [['stand', 'Em pé'], ['sit', 'Sentado'], ['wave', 'Acenando'], ['phone', 'Ao telefone'], ['cross', 'Braços cruzados'], ['point', 'Apontando']] }), P('walk', 'Vel. andar (m/s)', 'num', 1.4, { min: .3, max: 3, step: .1 }), P('run', 'Vel. correr (m/s)', 'num', 4.5, { min: 2, max: 10, step: .1 })];
 def('person', { cat: 'Pessoas', label: 'Pessoa', icon: '🧍', pilot: 'walker', params: personParams(1.75, '#2f6db5', '#3a3d45', '#d9a07a'), build: buildPerson, anim: animPerson });
-def('woman', { cat: 'Pessoas', label: 'Mulher', icon: '🧍‍♀️', pilot: 'walker', params: personParams(1.65, '#c94b3c', '#24262b', '#f1c7a6').map(x => x.k === 'build' ? { ...x, def: 0.2 } : x.k === 'hair' ? { ...x, def: '#6b3f1f' } : x), build: buildPerson, anim: animPerson });
+def('woman', { cat: 'Pessoas', label: 'Mulher', icon: '🧍‍♀️', pilot: 'walker', params: personParams(1.65, '#c94b3c', '#24262b', '#f1c7a6').map(x => x.k === 'sex' ? { ...x, def: 'f' } : x.k === 'build' ? { ...x, def: 0.2 } : x.k === 'hair' ? { ...x, def: '#6b3f1f' } : x), build: buildPerson, anim: animPerson });
 def('child', { cat: 'Pessoas', label: 'Criança', icon: '🧒', pilot: 'walker', params: personParams(1.15, '#d9a441', '#2f6db5', '#d9a07a').map(x => x.k === 'build' ? { ...x, def: 0.3 } : x.k === 'walk' ? { ...x, def: 1.1 } : x), build: buildPerson, anim: animPerson });
 def('crowd', {
   cat: 'Pessoas', label: 'Multidão', icon: '👥', pilot: 'walker',
@@ -223,7 +276,7 @@ def('crowd', {
   build(p) {
     const g = new THREE.Group(), r = mulberry(p.seed), members = [];
     for (let i = 0; i < p.count; i++) {
-      const pp = { height: 1.55 + r() * 0.35, build: r(), shirt: PALETTE[(r() * PALETTE.length) | 0], pants: ['#24262b', '#3a3d45', '#1f4e6e', '#6b5a48', '#8a9099'][(r() * 5) | 0], skin: SKIN[(r() * SKIN.length) | 0], hair: ['#2a1d14', '#6b3f1f', '#111', '#b08a4a'][(r() * 4) | 0], pose: r() < 0.6 ? 'stand' : p.pose };
+      const fs = r() < 0.5, pp = { sex: fs ? 'f' : 'm', look: 'clothes', height: (fs ? 1.52 : 1.62) + r() * 0.28, build: r(), sleeves: r() < 0.5 ? 'short' : 'long', shirt: PALETTE[(r() * PALETTE.length) | 0], pants: ['#24262b', '#3a3d45', '#1f4e6e', '#6b5a48', '#8a9099'][(r() * 5) | 0], skin: SKIN[(r() * SKIN.length) | 0], hair: ['#2a1d14', '#6b3f1f', '#111', '#b08a4a'][(r() * 4) | 0], pose: r() < 0.6 ? 'stand' : p.pose };
       const m = buildPerson(pp); const a = r() * Math.PI * 2, d = Math.sqrt(r()) * p.spread / 2;
       m.position.set(Math.cos(a) * d, 0, Math.sin(a) * d); m.rotation.y = (r() - 0.5) * 0.5; g.add(m);
       members.push({ rig: m.userData.rig, pp, off: r() * 10, spd: 1 + (r() - 0.5) * p.jitter });

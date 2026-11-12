@@ -109,7 +109,8 @@ function worldPos(o, f, out = new THREE.Vector3(), depth = 0) {
   const mt = o.cons && o.cons.mount && getObj(o.cons.mount);
   if (mt && mt !== o && depth < 3) { const t = worldPos(mt, f, new THREE.Vector3(), depth + 1); out.applyAxisAngle(UP, mountYaw(mt, f)).add(t); return out; }
   const fl = o.cons && o.cons.follow && getObj(o.cons.follow);
-  if (fl && fl !== o && depth < 3) { const t = worldPos(fl, f, new THREE.Vector3(), depth + 1); out.add(t); }
+  if (fl && fl !== o && depth < 3) { const t = worldPos(fl, f, new THREE.Vector3(), depth + 1); out.add(t); return out; }
+  if (_roadRelief && followsGround(o)) { const r = rt.get(o.id), gh = groundAt(out.x, out.z, r ? r._gh : null); if (gh != null) { out.y += gh; if (r && depth === 0) r._gh = gh; } else if (r && depth === 0) r._gh = 0; }
   return out;
 }
 function evalTransform(o, f) {
@@ -133,6 +134,11 @@ function evalTransform(o, f) {
   if (c.shake > 0) {
     const t = f / project.fps * (c.shakeFreq || 1.5), a = c.shake * DEG;
     g.rotateX(noise1(t, 11) * a + noise1(t * 2.7, 13) * a * 0.3); g.rotateY(noise1(t, 21) * a + noise1(t * 3.1, 23) * a * 0.3); g.rotateZ(noise1(t * 0.7, 31) * a * 0.4);
+  }
+  if (_roadRelief && o.type !== 'camera' && followsGround(o) && !(c.mount || c.follow)) { // inclina com a rampa
+    const r2 = rt.get(o.id), half = r2 && r2.size ? Math.max(0.25, r2.size.z * 0.35) : 1, fx = Math.sin(g.rotation.y), fz = Math.cos(g.rotation.y);
+    const a = groundAt(pos.x + fx * half, pos.z + fz * half, r2 && r2._gh), b = groundAt(pos.x - fx * half, pos.z - fz * half, r2 && r2._gh);
+    if (a != null && b != null) { const pitch = Math.atan2(a - b, 2 * half), k = isPersonType(o.type) ? 0 : isQuadType(o.type) ? 0.7 : 1; if (k) g.rotateX(-pitch * k); }
   }
   if (o.type === 'camera') {
     const focal = pilot.on && pilot.id === o.id ? pilot.s.focal : getVal(o, 'focal', f);
@@ -167,7 +173,9 @@ function animCtx(o, f) {
   const c = motion(o), i = clamp(Math.floor(f), 0, c.N - 1), j = Math.min(i + 1, c.N - 1), u = clamp(f - i, 0, 1);
   return { t: f / project.fps, dist: lerp(c.dist[i], c.dist[j], u), speed: lerp(c.speed[i], c.speed[j], u), yawRate: lerp(c.yawRate[i], c.yawRate[j], u), vy: lerp(c.vy[i], c.vy[j], u), y: lerp(c.y[i], c.y[j], u) };
 }
+let _roadRelief = false;
 function applyFrame(f) {
+  _groundTick++; _roadRelief = hasRoadRelief();
   for (const o of project.objects) {
     const r = rt.get(o.id); if (!r) continue;
     r.g.visible = !o.hidden;
@@ -178,6 +186,7 @@ function applyFrame(f) {
     if (o.clips && o.clips.length && r.rig) applyClip(o, r, f);
     if (o.type === 'camera') updateFrustum(r.rig, r.rig.cam.fov, r.rig.cam.aspect, project.activeCamera === o.id, sel === o.id ? camFocus(o, f) : 0);
   }
+  if (roadHandles.userData.road) syncRoadHandles();
 }
 
 /* ---------- render ---------- */

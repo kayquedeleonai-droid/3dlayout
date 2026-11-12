@@ -20,6 +20,7 @@ WORLD CONVENTIONS
 - Units: meters, seconds, degrees. Y is up, ground is y=0.
 - heading: 0 = facing +Z, 90 = facing +X, 180 = facing -Z.
 - Roads ("road", "street" assets) are centered on x=0 and run along the Z axis; lane width 3.5 m. On a 2-lane road the lane centers are x=-1.75 and x=+1.75. Sidewalks of "street" go from |x|=3.5 to |x|=7.5; buildings start beyond |x|≈8.
+- WINDING / HILLY ROADS: use type "roadpath" with params.pts = [[x, elevation, z], ...] control points (smooth spline; 30-60 m apart; grades under ~12%), params.lanes, params.closed for loops. To drive a vehicle (or walk a person) along it give that object "follow_road": {"road": "<road id>", "speed_kmh": 80, "lane": 1, "start_s": 0, "reverse": false} instead of a path (lane = 0-based index from the left; on a 2-lane road 1 = right lane) — height and pitch on ramps are automatic. Cameras can then "follow" or "aim" that object.
 - Vehicles move on the road along +Z (or -Z), y=0. Birds/drones/helicopters fly at y>0 and need y in their path.
 - Typical speeds: walk 1.4 m/s, run 4 m/s, car city 40-60 km/h, highway 100-130 km/h, sports car hero shot 80-160 km/h, horse gallop 12 m/s, bird 8-15 m/s. Distance = speed × time.
 - Camera lenses (full frame, 36mm sensor): ultra-wide 12-16mm, wide 20-28mm, normal 35-50mm, tele 85-200mm. With ultra-wide lenses put the camera CLOSE to the subject (2-4 m) to keep it big in frame; with tele put it far.
@@ -155,6 +156,7 @@ function applySpec(spec, mode) {
     if (!ASSETS[so.type] || so.type === 'camera') continue;
     const sc = +so.scale > 0 ? +so.scale : 1;
     let prm = cleanParams(so.type, so.params);
+    if (so.type === 'roadpath' && so.params && Array.isArray(so.params.pts)) prm.pts = so.params.pts.filter(a => Array.isArray(a) && a.length === 3).map(a => a.map(Number));
     if (so.type === 'realcar') { const mk = so.params && so.params.model; if (CAR_DB[mk] && !(so.params && so.params.profile)) prm = Object.assign(carDefaults(mk), { modelName: CAR_DB[mk].name }, prm.color ? { color: prm.color } : {}, { model: mk }); if (!so.name) so.name = (prm.modelName || (CAR_DB[mk] && CAR_DB[mk].name)); }
     const o = addObject(so.type, { silent: true, id: so.id, refs: oldRefs[so.id], name: so.name ? String(so.name).slice(0, 40) : undefined, params: prm, base: { px: +so.x || 0, py: +so.y || 0, pz: +so.z || 0, ry: +so.heading || 0, sx: sc, sy: sc, sz: sc } });
     idMap[so.id || o.id] = o.id; made.push(o);
@@ -173,6 +175,7 @@ function applySpec(spec, mode) {
       if (S.ry.length) { o.base.ry = S.ry[0].v; }
     }
   }
+  for (const so of (spec.objects || [])) { const fr = so.follow_road; if (!fr || !idMap[so.id] || !idMap[fr.road]) continue; const road = getObj(idMap[fr.road]), ob = getObj(idMap[so.id]); if (road && road.type === 'roadpath' && ob) roadFollow(road, ob, +fr.speed_kmh || 60, fr.lane ?? (road.params.lanes - 1), fr.reverse ? -1 : 1, +fr.start_pct || 0, Math.round((+fr.start_s || 0) * fps), true); }
   let firstCam = null;
   for (const scam of (spec.cameras || [])) {
     const fol = scam.follow && idMap[scam.follow], aim = scam.aim && idMap[scam.aim];

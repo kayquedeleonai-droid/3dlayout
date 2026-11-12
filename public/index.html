@@ -503,7 +503,7 @@ const box = (w, h, d, m, x, y, z, p) => mesh(new THREE.BoxGeometry(w, h, d), m, 
 const sph = (r, m, x, y, z, p, ws = 20, hs = 14) => mesh(new THREE.SphereGeometry(r, Math.max(ws, 18), Math.max(hs, 12)), m, x, y, z, p);
 const cyl = (rt, rb, h, m, x, y, z, p, s = 20) => mesh(new THREE.CylinderGeometry(rt, rb, h, Math.max(s, 16)), m, x, y, z, p);
 // elipsoide: semi-eixos rx, ry, rz
-const ell = (rx, ry, rz, m, x, y, z, p) => { const e = mesh(new THREE.SphereGeometry(1, 22, 16), m, x, y, z, p); e.scale.set(rx, ry, rz); return e; };
+const ell = (rx, ry, rz, m, x, y, z, p, ws = 22, hs = 16) => { const e = mesh(new THREE.SphereGeometry(1, ws, hs), m, x, y, z, p); e.scale.set(rx, ry, rz); return e; };
 // membro: cápsula pendurada do pivô para baixo, comprimento L (ponta a ponta ≈ L)
 const limb = (r, L, m, p, r2) => { const g = new THREE.CapsuleGeometry(r, Math.max(0.001, L - r), 6, 14); if (r2 && r2 !== r) { const pos = g.attributes.position; for (let i = 0; i < pos.count; i++) { const t = clamp((pos.getY(i) + L / 2) / L, 0, 1); const s = lerp(r2 / r, 1, t); pos.setX(i, pos.getX(i) * s); pos.setZ(i, pos.getZ(i) * s); } g.computeVertexNormals(); } return mesh(g, m, 0, -L / 2, 0, p); };
 // casco extrudado a partir de um perfil lateral (z,y) com largura W ao longo de X
@@ -626,46 +626,99 @@ def('moto', {
 
 /* ---------------- PESSOAS ---------------- */
 // Proporções antropométricas (frações da altura H, adulto médio)
+/* corpo humano: segmentos torneados (lathe) com seção elíptica — proporções do cânone adulto (~7,5 cabeças), criança com cabeça maior */
+function lathe(profile, mat, parent, sz = 1, segs = 12, y = 0, dome = 0.8) {
+  const pr = profile.slice().sort((a, b) => a[0] - b[0]), f = pchip(pr), y0 = pr[0][0], y1 = pr[pr.length - 1][0], N = 14, pts = [];
+  const r0 = pr[0][1], r1 = pr[pr.length - 1][1];
+  for (let i = 4; i >= 1; i--) { const a = (i / 4) * Math.PI / 2; pts.push(new THREE.Vector2(Math.max(0.0002, r0 * Math.cos(a)), y0 - r0 * dome * Math.sin(a))); }
+  for (let i = 0; i <= N; i++) { const yy = lerp(y0, y1, i / N); pts.push(new THREE.Vector2(Math.max(0.0005, f(yy)), yy)); }
+  for (let i = 1; i <= 4; i++) { const a = (i / 4) * Math.PI / 2; pts.push(new THREE.Vector2(Math.max(0.0002, r1 * Math.cos(a)), y1 + r1 * dome * Math.sin(a))); }
+  const geo = new THREE.LatheGeometry(pts, segs); geo.scale(1, 1, sz); geo.computeVertexNormals();
+  return mesh(geo, mat, 0, y, 0, parent);
+}
+/* junta as malhas estáticas de cada osso por material (menos draw calls: multidões leves) */
+function mergeStatic(root) {
+  const nodes = []; root.traverse(n => { if (!n.isMesh) nodes.push(n); });
+  for (const node of nodes) {
+    const byMat = new Map();
+    for (const c of node.children) if (c.isMesh && !c.children.length && c.geometry.index && c.geometry.attributes.uv) { const k = c.material.uuid; if (!byMat.has(k)) byMat.set(k, []); byMat.get(k).push(c); }
+    for (const list of byMat.values()) {
+      if (list.length < 2) continue;
+      let nv = 0, ni = 0; for (const c of list) { nv += c.geometry.attributes.position.count; ni += c.geometry.index.count; }
+      const P = new Float32Array(nv * 3), N = new Float32Array(nv * 3), U = new Float32Array(nv * 2), I = new Uint32Array(ni); let ov = 0, oi = 0;
+      for (const c of list) {
+        c.updateMatrix(); const gg = c.geometry.clone(); gg.applyMatrix4(c.matrix);
+        P.set(gg.attributes.position.array, ov * 3); N.set(gg.attributes.normal.array, ov * 3); U.set(gg.attributes.uv.array, ov * 2);
+        const ix = gg.index.array; for (let i = 0; i < ix.length; i++) I[oi + i] = ix[i] + ov; ov += gg.attributes.position.count; oi += ix.length;
+        node.remove(c); c.geometry.dispose(); gg.dispose();
+      }
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(P, 3)); geo.setAttribute('normal', new THREE.BufferAttribute(N, 3)); geo.setAttribute('uv', new THREE.BufferAttribute(U, 2)); geo.setIndex(new THREE.BufferAttribute(I, 1));
+      mesh(geo, list[0].material, 0, 0, 0, node);
+    }
+  }
+  return root;
+}
 function buildPerson(p) {
   const H = p.height, g = new THREE.Group(), rig = {};
-  const mq = p.look === 'mannequin';
-  const shirt = M(mq ? '#cbb193' : p.shirt), pants = M(mq ? '#c3a887' : p.pants), skin = M(mq ? '#d2b999' : p.skin), shoe = M(mq ? '#a98d6c' : '#26272b'), hair = M(mq ? '#d2b999' : (p.hair || '#2a1d14'));
-  const kid = H < 1.45 ? clamp((1.45 - H) / 0.6, 0, 1) : 0;       // crianças: cabeça proporcionalmente maior, pernas menores
-  const headH = H * (0.13 + kid * 0.04), b = p.build;              // b: 0 = estreito/feminino … 1 = largo
-  const hipY = H * (0.52 - kid * 0.04), shY = H * (0.818 - kid * 0.03);
-  const torsoL = shY - hipY, shW = H * (0.105 + b * 0.025), hipW = H * (0.088 - b * 0.004);
-  const thigh = hipY * 0.5, shin = hipY * 0.425, ankH = hipY - thigh - shin;
-  const uArm = H * 0.186, fArm = H * 0.146, hand = H * 0.095;
+  const mq = p.look === 'mannequin', fem = p.sex === 'f' || (p.sex == null && p.build < 0.3);
+  const skin = M(mq ? '#d6bd9c' : p.skin, { r: .7 }), shirt = mq ? skin : M(p.shirt, { r: .85 }), pants = mq ? skin : M(p.pants, { r: .9 }), shoe = M(mq ? '#b39675' : '#232427', { r: .6 }), hair = M(mq ? '#d6bd9c' : (p.hair || '#2a1d14'), { r: .9 }), joint = mq ? M('#bfa47f', { r: .7 }) : null;
+  const kid = H < 1.45 ? clamp((1.45 - H) / 0.6, 0, 1) : 0, b = clamp(p.build ?? 0.5, 0, 1);
+  const headH = H * (0.13 + kid * 0.045);
+  const hipY = H * (0.52 - kid * 0.045), shY = H * (0.818 - kid * 0.035);
+  const torsoL = shY - hipY, shW = H * ((fem ? 0.098 : 0.106) + b * 0.022) * (1 - kid * 0.08), hipR = H * (fem ? 0.1 : 0.088) * (0.95 + b * 0.12) * (1 - kid * 0.1);
+  const thigh = hipY * 0.5, shin = hipY * 0.43, ankH = hipY - thigh - shin;
+  const uArm = H * 0.182, fArm = H * 0.148, hand = H * 0.1;
+  const k = 1 + b * 0.35 - (fem ? 0.08 : 0); // espessura dos membros
+  // quadril / pelve
   const hips = grp(0, hipY, 0, g); rig.hips = hips; rig.hipY = hipY;
-  ell(hipW * 1.15, H * 0.055, H * 0.06, pants, 0, H * 0.01, 0, hips);
+  lathe([[-H * 0.075, hipR * 0.35], [-H * 0.055, hipR * 0.8], [-H * 0.02, hipR], [H * 0.03, hipR * 0.95], [H * 0.065, hipR * (fem ? 0.78 : 0.86)]], pants, hips, 0.66);
+  // tronco (gira sobre o quadril)
   const torso = grp(0, H * 0.02, 0, hips); rig.torso = torso;
-  ell(hipW * 1.05, torsoL * 0.32, H * 0.058, shirt, 0, torsoL * 0.25, 0, torso);                 // abdômen
-  ell(shW * 0.98, torsoL * 0.36, H * (0.066 + b * 0.006), shirt, 0, torsoL * 0.62, 0, torso);   // tórax
-  ell(shW * 1.05, H * 0.03, H * 0.05, shirt, 0, torsoL * 0.92, 0, torso);                        // ombros
-  cyl(H * 0.024, H * 0.028, H * 0.06, skin, 0, torsoL + H * 0.015, 0, torso, 16);
-  const head = grp(0, torsoL + H * 0.035 + headH * 0.5, 0, torso); rig.head = head;
-  ell(headH * 0.34, headH * 0.5, headH * 0.42, skin, 0, 0, 0.005 * H, head);
-  ell(headH * 0.36, headH * 0.36, headH * 0.44, hair, 0, headH * 0.14, -headH * 0.04, head);
-  ell(headH * 0.06, headH * 0.09, headH * 0.08, skin, 0, -headH * 0.02, headH * 0.42, head);    // nariz
-  for (const sx of [1, -1]) ell(headH * 0.05, headH * 0.11, headH * 0.06, skin, sx * headH * 0.34, -headH * 0.02, 0, head); // orelhas
+  const wR = H * (fem ? 0.066 : 0.077) * (0.95 + b * 0.15), cR = H * (fem ? 0.088 : 0.098) * (0.94 + b * 0.14), tL = torsoL;
+  lathe([[-H * 0.005, hipR * (fem ? 0.9 : 0.95)], [H * 0.04, hipR * (fem ? 0.84 : 0.9)], [tL * 0.3, wR], [tL * 0.55, cR * 0.96], [tL * 0.72, cR], [tL * 0.86, cR * 0.97], [tL * 0.95, shW * 0.78], [tL * 1.0, H * 0.05], [tL * 1.04, H * 0.03]], shirt, torso, 0.6, 14);
+  if (fem && kid < 0.3) for (const sx of [-1, 1]) { const bu = ell(H * 0.034, H * 0.028, H * 0.017, shirt, sx * H * 0.038, tL * 0.665, cR * 0.5, torso, 14, 10); bu.rotation.y = sx * 0.25; }
+  // trapézio / ombros
+  for (const sx of [-1, 1]) { const tr = ell(shW * 0.55, H * 0.022, H * 0.04, shirt, sx * shW * 0.45, tL * 0.96, -H * 0.005, torso); tr.rotation.z = sx * -0.28; }
+  // pescoço e cabeça
+  const neckR = H * (fem ? 0.024 : 0.028) * (1 + kid * 0.15);
+  lathe([[tL * 0.98, neckR * 1.15], [tL + H * 0.035, neckR], [tL + H * 0.06, neckR * 0.95]], skin, torso, 0.95, 10);
+  const head = grp(0, tL + H * 0.045 + headH * 0.5, 0, torso); rig.head = head;
+  const hw = headH * (fem ? 0.36 : 0.38);
+  ell(hw, headH * 0.42, headH * 0.47, skin, 0, headH * 0.09, -headH * 0.03, head, 20, 14);          // crânio
+  const jaw = ell(hw * (fem ? 0.8 : 0.86), headH * 0.33, headH * 0.36, skin, 0, -headH * 0.15, headH * 0.05, head, 18, 12); // rosto/mandíbula
+  ell(headH * 0.045, headH * 0.1, headH * 0.07, skin, 0, -headH * 0.04, headH * 0.4, head, 8, 6).rotation.x = -0.25; // nariz
+  for (const sx of [-1, 1]) { ell(headH * 0.04, headH * 0.11, headH * 0.065, skin, sx * hw * 0.98, -headH * 0.01, -headH * 0.02, head, 8, 6); }
+  if (!mq) {
+    ell(hw * 1.06, headH * 0.33, headH * 0.5, hair, 0, headH * 0.22, -headH * 0.06, head, 18, 10);
+    if (fem) { const lh = ell(hw * 1.02, headH * 0.55, headH * 0.22, hair, 0, -headH * 0.12, -headH * 0.26, head, 14, 10); lh.rotation.x = 0.12; }
+  }
+  // braços
   rig.arms = []; rig.legs = [];
   for (const sx of [1, -1]) {
-    const shd = grp(sx * shW, torsoL * 0.9, 0, torso);
-    limb(H * 0.03, uArm, shirt, shd, H * 0.026);
+    const shd = grp(sx * shW, tL * 0.92, -H * 0.004, torso);
+    ell(H * 0.034 * k, H * 0.038, H * 0.038 * k, shirt, 0, -H * 0.016, 0, shd, 12, 8);                       // deltoide
+    lathe([[-uArm, H * 0.022 * k], [-uArm * 0.85, H * 0.025 * k], [-uArm * 0.45, H * 0.031 * k], [-uArm * 0.1, H * 0.036 * k], [0, H * 0.03 * k]], shirt, shd, 0.95, 10);
     const elb = grp(0, -uArm, 0, shd);
-    limb(H * 0.022, fArm, skin, elb, H * 0.018);
+    if (joint) ell(H * 0.022 * k, H * 0.022, H * 0.022 * k, joint, 0, 0, 0, elb, 10, 6);
+    lathe([[-fArm, H * 0.016 * k], [-fArm * 0.7, H * 0.019 * k], [-fArm * 0.3, H * 0.026 * k], [-fArm * 0.05, H * 0.024 * k], [0, H * 0.021 * k]], mq ? skin : (p.sleeves === 'short' ? skin : shirt), elb, 0.85, 10);
     const wr = grp(0, -fArm, 0, elb);
-    const hd = ell(H * 0.012, hand * 0.5, H * 0.026, skin, 0, -hand * 0.45, 0, wr);
+    ell(H * 0.016, hand * 0.32, H * 0.034, skin, 0, -hand * 0.3, H * 0.002, wr, 10, 6);                          // palma
+    ell(H * 0.013, hand * 0.25, H * 0.031, skin, 0, -hand * 0.72, H * 0.004, wr, 10, 6);                       // dedos
+    const th = ell(H * 0.009, hand * 0.2, H * 0.01, skin, 0, -hand * 0.3, H * 0.026, wr, 6, 4); th.rotation.x = 0.5;
     rig.arms.push({ s: shd, e: elb, side: sx });
-    const hipJ = grp(sx * hipW * 0.55, 0, 0, hips);
-    limb(H * 0.045, thigh, pants, hipJ, H * 0.034);
+    // pernas
+    const hipJ = grp(sx * hipR * 0.5, 0, 0, hips);
+    lathe([[-thigh, H * 0.033 * k], [-thigh * 0.8, H * 0.039 * k], [-thigh * 0.4, H * 0.05 * k], [-thigh * 0.12, H * 0.057 * k], [H * 0.01, H * 0.05 * k]], pants, hipJ, 0.95, 12);
     const knee = grp(0, -thigh, 0, hipJ);
-    limb(H * 0.032, shin, pants, knee, H * 0.024);
+    if (joint) ell(H * 0.032 * k, H * 0.03, H * 0.032 * k, joint, 0, 0, 0.004 * H, knee, 10, 6);
+    const shinM = lathe([[-shin, H * 0.02 * k], [-shin * 0.8, H * 0.024 * k], [-shin * 0.42, H * 0.035 * k], [-shin * 0.2, H * 0.038 * k], [0, H * 0.033 * k]], pants, knee, 0.95, 12); shinM.position.z = -H * 0.003;
     const ankle = grp(0, -shin, 0, knee);
-    const ft = box(H * 0.055, ankH * 1.0, H * 0.152, shoe, 0, -ankH * 0.5, H * 0.045, ankle);
+    const fl = H * 0.15, fw = H * 0.05;
+    const foot = ell(fw * 0.5, ankH * 0.62, fl * 0.5, shoe, 0, -ankH * 0.42, fl * 0.27, ankle, 14, 8);
+    box(fw * 0.95, ankH * 0.22, fl * 0.95, shoe, 0, -ankH * 0.9, fl * 0.27, ankle);                          // sola
     rig.legs.push({ h: hipJ, k: knee, a: ankle, side: sx });
   }
-  rig.H = H; g.userData.rig = rig; return g;
+  rig.H = H; g.userData.rig = rig; mergeStatic(g); return g;
 }
 function animPerson(rig, c, p, phaseOff = 0) {
   const H = rig.H, sp = Math.abs(c.speed);
@@ -699,9 +752,9 @@ function animPerson(rig, c, p, phaseOff = 0) {
     }
   }
 }
-const personParams = (h, shirt, pants, skin) => [P('look', 'Visual', 'select', 'mannequin', { opts: [['mannequin', 'Manequim'], ['clothes', 'Roupas']] }), P('height', 'Altura (m)', 'num', h, { min: 0.8, max: 2.2, step: .01 }), P('build', 'Porte', 'num', 0.5, { min: 0, max: 1, step: .05 }), P('shirt', 'Camisa', 'color', shirt), P('pants', 'Calça', 'color', pants), P('skin', 'Pele', 'color', skin), P('hair', 'Cabelo', 'color', '#2a1d14'), P('pose', 'Pose parado', 'select', 'stand', { opts: [['stand', 'Em pé'], ['sit', 'Sentado'], ['wave', 'Acenando'], ['phone', 'Ao telefone'], ['cross', 'Braços cruzados'], ['point', 'Apontando']] }), P('walk', 'Vel. andar (m/s)', 'num', 1.4, { min: .3, max: 3, step: .1 }), P('run', 'Vel. correr (m/s)', 'num', 4.5, { min: 2, max: 10, step: .1 })];
+const personParams = (h, shirt, pants, skin) => [P('look', 'Visual', 'select', 'mannequin', { opts: [['mannequin', 'Manequim'], ['clothes', 'Roupas']] }), P('height', 'Altura (m)', 'num', h, { min: 0.8, max: 2.2, step: .01 }), P('build', 'Porte', 'num', 0.5, { min: 0, max: 1, step: .05 }), P('shirt', 'Camisa', 'color', shirt), P('pants', 'Calça', 'color', pants), P('skin', 'Pele', 'color', skin), P('hair', 'Cabelo', 'color', '#2a1d14'), P('sex', 'Corpo', 'select', 'm', { opts: [['m', 'Masculino'], ['f', 'Feminino']] }), P('sleeves', 'Mangas', 'select', 'long', { opts: [['long', 'Compridas'], ['short', 'Curtas']] }), P('pose', 'Pose parado', 'select', 'stand', { opts: [['stand', 'Em pé'], ['sit', 'Sentado'], ['wave', 'Acenando'], ['phone', 'Ao telefone'], ['cross', 'Braços cruzados'], ['point', 'Apontando']] }), P('walk', 'Vel. andar (m/s)', 'num', 1.4, { min: .3, max: 3, step: .1 }), P('run', 'Vel. correr (m/s)', 'num', 4.5, { min: 2, max: 10, step: .1 })];
 def('person', { cat: 'Pessoas', label: 'Pessoa', icon: '🧍', pilot: 'walker', params: personParams(1.75, '#2f6db5', '#3a3d45', '#d9a07a'), build: buildPerson, anim: animPerson });
-def('woman', { cat: 'Pessoas', label: 'Mulher', icon: '🧍‍♀️', pilot: 'walker', params: personParams(1.65, '#c94b3c', '#24262b', '#f1c7a6').map(x => x.k === 'build' ? { ...x, def: 0.2 } : x.k === 'hair' ? { ...x, def: '#6b3f1f' } : x), build: buildPerson, anim: animPerson });
+def('woman', { cat: 'Pessoas', label: 'Mulher', icon: '🧍‍♀️', pilot: 'walker', params: personParams(1.65, '#c94b3c', '#24262b', '#f1c7a6').map(x => x.k === 'sex' ? { ...x, def: 'f' } : x.k === 'build' ? { ...x, def: 0.2 } : x.k === 'hair' ? { ...x, def: '#6b3f1f' } : x), build: buildPerson, anim: animPerson });
 def('child', { cat: 'Pessoas', label: 'Criança', icon: '🧒', pilot: 'walker', params: personParams(1.15, '#d9a441', '#2f6db5', '#d9a07a').map(x => x.k === 'build' ? { ...x, def: 0.3 } : x.k === 'walk' ? { ...x, def: 1.1 } : x), build: buildPerson, anim: animPerson });
 def('crowd', {
   cat: 'Pessoas', label: 'Multidão', icon: '👥', pilot: 'walker',
@@ -709,7 +762,7 @@ def('crowd', {
   build(p) {
     const g = new THREE.Group(), r = mulberry(p.seed), members = [];
     for (let i = 0; i < p.count; i++) {
-      const pp = { height: 1.55 + r() * 0.35, build: r(), shirt: PALETTE[(r() * PALETTE.length) | 0], pants: ['#24262b', '#3a3d45', '#1f4e6e', '#6b5a48', '#8a9099'][(r() * 5) | 0], skin: SKIN[(r() * SKIN.length) | 0], hair: ['#2a1d14', '#6b3f1f', '#111', '#b08a4a'][(r() * 4) | 0], pose: r() < 0.6 ? 'stand' : p.pose };
+      const fs = r() < 0.5, pp = { sex: fs ? 'f' : 'm', look: 'clothes', height: (fs ? 1.52 : 1.62) + r() * 0.28, build: r(), sleeves: r() < 0.5 ? 'short' : 'long', shirt: PALETTE[(r() * PALETTE.length) | 0], pants: ['#24262b', '#3a3d45', '#1f4e6e', '#6b5a48', '#8a9099'][(r() * 5) | 0], skin: SKIN[(r() * SKIN.length) | 0], hair: ['#2a1d14', '#6b3f1f', '#111', '#b08a4a'][(r() * 4) | 0], pose: r() < 0.6 ? 'stand' : p.pose };
       const m = buildPerson(pp); const a = r() * Math.PI * 2, d = Math.sqrt(r()) * p.spread / 2;
       m.position.set(Math.cos(a) * d, 0, Math.sin(a) * d); m.rotation.y = (r() - 0.5) * 0.5; g.add(m);
       members.push({ rig: m.userData.rig, pp, off: r() * 10, spd: 1 + (r() - 0.5) * p.jitter });
@@ -1654,7 +1707,8 @@ function worldPos(o, f, out = new THREE.Vector3(), depth = 0) {
   const mt = o.cons && o.cons.mount && getObj(o.cons.mount);
   if (mt && mt !== o && depth < 3) { const t = worldPos(mt, f, new THREE.Vector3(), depth + 1); out.applyAxisAngle(UP, mountYaw(mt, f)).add(t); return out; }
   const fl = o.cons && o.cons.follow && getObj(o.cons.follow);
-  if (fl && fl !== o && depth < 3) { const t = worldPos(fl, f, new THREE.Vector3(), depth + 1); out.add(t); }
+  if (fl && fl !== o && depth < 3) { const t = worldPos(fl, f, new THREE.Vector3(), depth + 1); out.add(t); return out; }
+  if (_roadRelief && followsGround(o)) { const r = rt.get(o.id), gh = groundAt(out.x, out.z, r ? r._gh : null); if (gh != null) { out.y += gh; if (r && depth === 0) r._gh = gh; } else if (r && depth === 0) r._gh = 0; }
   return out;
 }
 function evalTransform(o, f) {
@@ -1678,6 +1732,11 @@ function evalTransform(o, f) {
   if (c.shake > 0) {
     const t = f / project.fps * (c.shakeFreq || 1.5), a = c.shake * DEG;
     g.rotateX(noise1(t, 11) * a + noise1(t * 2.7, 13) * a * 0.3); g.rotateY(noise1(t, 21) * a + noise1(t * 3.1, 23) * a * 0.3); g.rotateZ(noise1(t * 0.7, 31) * a * 0.4);
+  }
+  if (_roadRelief && o.type !== 'camera' && followsGround(o) && !(c.mount || c.follow)) { // inclina com a rampa
+    const r2 = rt.get(o.id), half = r2 && r2.size ? Math.max(0.25, r2.size.z * 0.35) : 1, fx = Math.sin(g.rotation.y), fz = Math.cos(g.rotation.y);
+    const a = groundAt(pos.x + fx * half, pos.z + fz * half, r2 && r2._gh), b = groundAt(pos.x - fx * half, pos.z - fz * half, r2 && r2._gh);
+    if (a != null && b != null) { const pitch = Math.atan2(a - b, 2 * half), k = isPersonType(o.type) ? 0 : isQuadType(o.type) ? 0.7 : 1; if (k) g.rotateX(-pitch * k); }
   }
   if (o.type === 'camera') {
     const focal = pilot.on && pilot.id === o.id ? pilot.s.focal : getVal(o, 'focal', f);
@@ -1712,7 +1771,9 @@ function animCtx(o, f) {
   const c = motion(o), i = clamp(Math.floor(f), 0, c.N - 1), j = Math.min(i + 1, c.N - 1), u = clamp(f - i, 0, 1);
   return { t: f / project.fps, dist: lerp(c.dist[i], c.dist[j], u), speed: lerp(c.speed[i], c.speed[j], u), yawRate: lerp(c.yawRate[i], c.yawRate[j], u), vy: lerp(c.vy[i], c.vy[j], u), y: lerp(c.y[i], c.y[j], u) };
 }
+let _roadRelief = false;
 function applyFrame(f) {
+  _groundTick++; _roadRelief = hasRoadRelief();
   for (const o of project.objects) {
     const r = rt.get(o.id); if (!r) continue;
     r.g.visible = !o.hidden;
@@ -1723,6 +1784,7 @@ function applyFrame(f) {
     if (o.clips && o.clips.length && r.rig) applyClip(o, r, f);
     if (o.type === 'camera') updateFrustum(r.rig, r.rig.cam.fov, r.rig.cam.aspect, project.activeCamera === o.id, sel === o.id ? camFocus(o, f) : 0);
   }
+  if (roadHandles.userData.road) syncRoadHandles();
 }
 
 /* ---------- render ---------- */
@@ -1958,7 +2020,7 @@ function duplicateObject(id) {
 /* ============================================================
    INSPETOR
    ============================================================ */
-const secState = { xf: true, cam: true, cons: false, par: true, gen: false, car: true, ref: false, sens: false, model: true };
+const secState = { xf: true, cam: true, cons: false, par: true, gen: false, car: true, ref: false, sens: false, model: true, road: true };
 function sec(id, title, body, extra = '') { return `<div class="sec ${secState[id] ? '' : 'closed'}" data-sec="${id}"><div class="sech"><span class="car">${secState[id] ? '▼' : '▶'}</span>${title}<span class="grow"></span>${extra}</div><div class="secb">${body}</div></div>`; }
 function chRow(o, ch) {
   const d = CH[ch], g = GROUPS[d.g];
@@ -2010,10 +2072,12 @@ function renderInspector() {
     <div class="prow wide"><span class="lb">Altura da mira</span><input type="number" step="0.1" data-cons="aimH" value="${c.aimH}"></div>
     <div class="prow wide"><span class="lb">Seguir</span><select data-cons="follow">${optsObj(c.follow)}</select></div>
     <div class="prow wide"><span class="lb">Montar (rig)</span><select data-cons="mount">${optsObj(c.mount)}</select></div>
+    ${followsGround(o) ? `<div class="prow wide"><span class="lb">Seguir estrada/terreno</span><input type="checkbox" id="consGround" ${c.ground === false ? '' : 'checked'}></div>` : ''}
     <div class="prow wide"><span class="lb">Tremor (°)</span><input type="number" step="0.1" min="0" data-cons="shake" value="${c.shake}"></div>
     <div class="prow wide"><span class="lb">Freq. tremor</span><input type="number" step="0.1" min="0" data-cons="shakeFreq" value="${c.shakeFreq}"></div>
     <div class="hint"><b>Mirar</b>: aponta sempre para o objeto. <b>Seguir</b>: posição relativa ao alvo, sem girar junto (travelling/perseguição). <b>Montar</b>: rig preso ao veículo — acompanha posição e giro (capô, porta, para-choque). <b>Tremor</b>: câmera na mão.</div>`);
   if (o.type === 'realcar') h += sec('car', 'Ficha técnica do carro', carSection(o));
+  if (o.type === 'roadpath') h += sec('road', 'Traçado da estrada', roadSectionHTML(o));
   if (o.type !== 'camera') h += sec('ref', 'Model sheet / referência' + (o.refs && Object.keys(o.refs).length ? ' <span style="color:var(--acc)">•</span>' : ''), refsSection(o));
   if (d.params.length) h += sec(isCam ? 'sens' : 'par', isCam ? 'Sensor e óptica (avançado)' : 'Parâmetros procedurais', d.params.map(p => paramField(p, o.params[p.k] ?? p.def)).join(''));
   // gerador
@@ -2027,7 +2091,7 @@ function renderInspector() {
     <div class="prow wide"><span class="lb">Easing</span><select id="genEase"><option value="inout">Ease in-out</option><option value="in">Ease in</option><option value="out">Ease out</option><option value="linear">Linear</option></select></div>
     <div class="btnrow"><button class="pri" data-act="gen">Gerar a partir do frame ${curFrame}</button></div>
     <div class="hint">Cria keyframes procedurais a partir do estado atual. Depois refine no Graph Editor.</div>`);
-  $('#insp').innerHTML = h;
+  $('#insp').innerHTML = h; updateRoadHandles();
   $('#genEase') && ($('#genEase').value = genState.ease);
   refreshInspectorValues(true);
 }
@@ -2992,7 +3056,7 @@ function demoProject() {
    INICIALIZAÇÃO
    ============================================================ */
 function init() {
-  initRealcarUI(); initThumbs(); initCinemaUI(); initModelUI();
+  initRealcarUI(); initThumbs(); initCinemaUI(); initModelUI(); initRoadUI();
   renderAssets();
   let loaded = false;
   try { const s = localStorage.getItem('layout3d.autosave'); if (s) { const d = JSON.parse(s); if (d && d.objects && d.objects.length) { loadProjectData(d); loaded = true; toast('Sessão anterior restaurada'); } } } catch (e) { }
@@ -3024,6 +3088,7 @@ WORLD CONVENTIONS
 - Units: meters, seconds, degrees. Y is up, ground is y=0.
 - heading: 0 = facing +Z, 90 = facing +X, 180 = facing -Z.
 - Roads ("road", "street" assets) are centered on x=0 and run along the Z axis; lane width 3.5 m. On a 2-lane road the lane centers are x=-1.75 and x=+1.75. Sidewalks of "street" go from |x|=3.5 to |x|=7.5; buildings start beyond |x|≈8.
+- WINDING / HILLY ROADS: use type "roadpath" with params.pts = [[x, elevation, z], ...] control points (smooth spline; 30-60 m apart; grades under ~12%), params.lanes, params.closed for loops. To drive a vehicle (or walk a person) along it give that object "follow_road": {"road": "<road id>", "speed_kmh": 80, "lane": 1, "start_s": 0, "reverse": false} instead of a path (lane = 0-based index from the left; on a 2-lane road 1 = right lane) — height and pitch on ramps are automatic. Cameras can then "follow" or "aim" that object.
 - Vehicles move on the road along +Z (or -Z), y=0. Birds/drones/helicopters fly at y>0 and need y in their path.
 - Typical speeds: walk 1.4 m/s, run 4 m/s, car city 40-60 km/h, highway 100-130 km/h, sports car hero shot 80-160 km/h, horse gallop 12 m/s, bird 8-15 m/s. Distance = speed × time.
 - Camera lenses (full frame, 36mm sensor): ultra-wide 12-16mm, wide 20-28mm, normal 35-50mm, tele 85-200mm. With ultra-wide lenses put the camera CLOSE to the subject (2-4 m) to keep it big in frame; with tele put it far.
@@ -3159,6 +3224,7 @@ function applySpec(spec, mode) {
     if (!ASSETS[so.type] || so.type === 'camera') continue;
     const sc = +so.scale > 0 ? +so.scale : 1;
     let prm = cleanParams(so.type, so.params);
+    if (so.type === 'roadpath' && so.params && Array.isArray(so.params.pts)) prm.pts = so.params.pts.filter(a => Array.isArray(a) && a.length === 3).map(a => a.map(Number));
     if (so.type === 'realcar') { const mk = so.params && so.params.model; if (CAR_DB[mk] && !(so.params && so.params.profile)) prm = Object.assign(carDefaults(mk), { modelName: CAR_DB[mk].name }, prm.color ? { color: prm.color } : {}, { model: mk }); if (!so.name) so.name = (prm.modelName || (CAR_DB[mk] && CAR_DB[mk].name)); }
     const o = addObject(so.type, { silent: true, id: so.id, refs: oldRefs[so.id], name: so.name ? String(so.name).slice(0, 40) : undefined, params: prm, base: { px: +so.x || 0, py: +so.y || 0, pz: +so.z || 0, ry: +so.heading || 0, sx: sc, sy: sc, sz: sc } });
     idMap[so.id || o.id] = o.id; made.push(o);
@@ -3177,6 +3243,7 @@ function applySpec(spec, mode) {
       if (S.ry.length) { o.base.ry = S.ry[0].v; }
     }
   }
+  for (const so of (spec.objects || [])) { const fr = so.follow_road; if (!fr || !idMap[so.id] || !idMap[fr.road]) continue; const road = getObj(idMap[fr.road]), ob = getObj(idMap[so.id]); if (road && road.type === 'roadpath' && ob) roadFollow(road, ob, +fr.speed_kmh || 60, fr.lane ?? (road.params.lanes - 1), fr.reverse ? -1 : 1, +fr.start_pct || 0, Math.round((+fr.start_s || 0) * fps), true); }
   let firstCam = null;
   for (const scam of (spec.cameras || [])) {
     const fol = scam.follow && idMap[scam.follow], aim = scam.aim && idMap[scam.aim];
@@ -4351,6 +4418,245 @@ function initModelUI() {
     if (b.dataset.cm === 'load') modelFile.click();
     if (b.dataset.cm === 'remove') { delete o.custom; buildRuntime(o); attachGizmo(); bump(); commit(); renderInspector(); renderOutliner(); }
     if (b.dataset.cmrot != null && o.custom) { o.custom.rot = +b.dataset.cmrot; buildRuntime(o); attachGizmo(); bump(); commit(); renderInspector(); }
+  });
+}
+
+/* ============================================================
+   ESTRADA COM CURVAS, SUBIDAS E DESCIDAS (spline editável)
+   o.params.pts = [[x, y, z], ...] no espaço local da estrada (y = altura).
+   Carros, pessoas e animais seguem a altura e a inclinação da pista.
+   ============================================================ */
+const ROAD_PRESETS = {
+  straight: { lb: 'Reta', ic: '➖', pts: [[0, 0, -100], [0, 0, 100]] },
+  curve: { lb: 'Curva 90°', ic: '↪️', pts: [[0, 0, -80], [0, 0, -10], [12, 0, 22], [45, 0, 35], [110, 0, 35]] },
+  s: { lb: 'Curva em S', ic: '〰️', pts: [[0, 0, -110], [0, 0, -60], [22, 0, -20], [22, 0, 20], [0, 0, 60], [0, 0, 110]] },
+  hill: { noBridge: true, lb: 'Subida e descida', ic: '⛰️', pts: [[0, 0, -120], [0, 0, -70], [0, 7, -25], [0, 9, 0], [0, 7, 25], [0, 0, 70], [0, 0, 120]] },
+  climb: { noBridge: true, lb: 'Rampa de subida', ic: '📈', pts: [[0, 0, -100], [0, 0, -50], [0, 5, 0], [0, 13, 50], [0, 18, 100]] },
+  serra: { noBridge: true, lb: 'Serra (zigue-zague)', ic: '🏔️', pts: [[0, 0, -70], [0, 2, -20], [6, 4, 10], [30, 7, 18], [55, 10, 8], [62, 12, -18], [50, 14, -40], [22, 16, -48], [0, 18, -46], [-15, 20, -30]] },
+  overpass: { lb: 'Viaduto', ic: '🌉', pts: [[0, 0, -150], [0, 0, -90], [0, 4, -50], [0, 8, -15], [0, 8, 15], [0, 4, 50], [0, 0, 90], [0, 0, 150]] },
+  loop: { lb: 'Circuito fechado', ic: '⭕', closed: true, pts: [[0, 0, -60], [45, 0, -45], [60, 0, 0], [45, 0, 45], [0, 0, 60], [-45, 0, 45], [-60, 0, 0], [-45, 0, -45]] },
+};
+def('roadpath', {
+  cat: 'Cenário', label: 'Estrada com curvas', icon: '🛣️',
+  params: [P('lanes', 'Faixas', 'int', 2, { min: 1, max: 8, step: 1 }), P('laneW', 'Largura da faixa (m)', 'num', 3.5, { min: 2.5, max: 4.5, step: .1 }), P('shoulder', 'Acostamento (m)', 'num', 1.5, { min: 0, max: 4, step: .1 }),
+    P('sidewalk', 'Calçada', 'bool', false), P('guard', 'Guard-rail', 'bool', false), P('center', 'Linha central', 'select', 'double', { opts: [['double', 'Dupla amarela'], ['dash', 'Tracejada'], ['none', 'Nenhuma']] }),
+    P('closed', 'Fechada (circuito)', 'bool', false), P('bridge', 'Pilares acima de 3 m', 'bool', true), P('asphalt', 'Asfalto', 'color', '#3a3c40')],
+  build(p) { const g = new THREE.Group(); buildRoadPath(p, g); return g; },
+});
+function roadPts(p) { return Array.isArray(p.pts) && p.pts.length >= 2 ? p.pts : ROAD_PRESETS.s.pts; }
+function roadCurve(p) { const c = new THREE.CatmullRomCurve3(roadPts(p).map(a => new THREE.Vector3(a[0], a[1], a[2])), !!p.closed, 'centripetal'); return c; }
+function roadDims(p) { const hw = p.lanes * p.laneW / 2, E = hw + (+p.shoulder || 0) + (p.sidewalk ? 3 : 0); return { hw, E }; }
+// amostra a spline a cada ~1 m: posição, direção, vetor lateral, distância acumulada
+function sampleRoad(p) {
+  const c = roadCurve(p), len = c.getLength(), n = clamp(Math.ceil(len / 1.0), 8, 3000), S = [];
+  for (let i = 0; i <= n; i++) {
+    const u = i / n, pt = c.getPointAt(u), t = c.getTangentAt(u), hl = Math.hypot(t.x, t.z) || 1;
+    S.push({ x: pt.x, y: pt.y, z: pt.z, tx: t.x / hl, tz: t.z / hl, rx: -t.z / hl, rz: t.x / hl, s: u * len, grade: t.y / hl });
+  }
+  return { S, len };
+}
+const _roadMats = {};
+function roadMat(c, opt) { const k = c + JSON.stringify(opt || {}); return _roadMats[k] || (_roadMats[k] = M(c, Object.assign({ r: .95 }, opt || {}))); }
+function buildRoadPath(p, g) {
+  const { S, len } = sampleRoad(p), { hw, E } = roadDims(p), sh = +p.shoulder || 0, lift = 0.03;
+  // faixa genérica: offset(i) -> [lateral, dy]; liga amostras i0..i1
+  const strip = (mat, A, B, from = 0, to = S.length - 1, poly = true) => {
+    if (to - from < 1) return;
+    const pos = [], idx = [];
+    for (let i = from; i <= to; i++) { const s = S[i], [oa, ya] = A(s, i), [ob, yb] = B(s, i); pos.push(s.x + s.rx * oa, s.y + ya, s.z + s.rz * oa, s.x + s.rx * ob, s.y + yb, s.z + s.rz * ob); }
+    for (let k = 0; k < to - from; k++) { const a = k * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx); geo.computeVertexNormals();
+    const m = mesh(geo, mat, 0, 0, 0, g); m.castShadow = false; m.receiveShadow = true; if (poly) { m.material.polygonOffset = true; } return m;
+  };
+  const both = (mat, a, b, y = lift, from, to) => { strip(mat, () => [a, y], () => [b, y], from, to); strip(mat, () => [-b, y], () => [-a, y], from, to); };
+  const dashed = (mat, a, b, y, dash = 3, gap = 9) => { let i0 = null; for (let i = 0; i < S.length; i++) { const on = (S[i].s % (dash + gap)) < dash; if (on && i0 === null) i0 = i; if ((!on || i === S.length - 1) && i0 !== null) { strip(mat, () => [a, y], () => [b, y], i0, Math.max(i0 + 1, i)); i0 = null; } } };
+  const asphalt = roadMat(p.asphalt || '#3a3c40'), white = roadMat('#e8e6e1', { r: .8 }), yel = roadMat('#e0b030', { r: .8 }), shoulderM = roadMat('#55575b'), dirt = roadMat('#7b7364'), conc = roadMat('#a7a49d', { r: .9 }), curb = roadMat('#c7c4bd', { r: .9 });
+  strip(asphalt, () => [-hw, lift], () => [hw, lift]);
+  if (sh > 0) both(shoulderM, hw, hw + sh, lift - 0.005);
+  // pintura
+  both(white, hw - 0.3, hw - 0.15, lift + 0.006);
+  for (let i = 1; i < p.lanes; i++) {
+    const x = -hw + i * p.laneW, center = p.lanes % 2 === 0 && i === p.lanes / 2;
+    if (center && p.center === 'double') { strip(yel, () => [x - 0.2, lift + 0.006], () => [x - 0.08, lift + 0.006]); strip(yel, () => [x + 0.08, lift + 0.006], () => [x + 0.2, lift + 0.006]); }
+    else if (center && p.center === 'none') { }
+    else dashed(center ? yel : white, x - 0.06, x + 0.06, lift + 0.006);
+  }
+  if (p.lanes === 1 && p.center !== 'none') dashed(yel, -0.06, 0.06, lift + 0.006);
+  // calçada com meio-fio
+  const E0 = hw + sh;
+  if (p.sidewalk) { both(curb, E0, E0 + 0.2, lift + 0.15); both(conc, E0 + 0.2, E, lift + 0.15); strip(curb, () => [E0, lift], () => [E0, lift + 0.15]); strip(curb, () => [-E0, lift + 0.15], () => [-E0, lift]); }
+  // talude / aterro até o chão (ou parede lateral do viaduto)
+  const isBridge = (s) => p.bridge && s.y > 3;
+  const skirtW = (s) => isBridge(s) ? 0 : Math.abs(s.y) * 1.6 + (Math.abs(s.y) > 0.05 ? 0.6 : 0);
+  if (S.some(s => Math.abs(s.y) > 0.05)) {
+    const yTop = p.sidewalk ? lift + 0.15 : lift;
+    strip(dirt, (s) => [E, yTop], (s) => [E + skirtW(s), isBridge(s) ? yTop - 0.9 : -s.y + 0.005]);
+    strip(dirt, (s) => [-E - skirtW(s), isBridge(s) ? yTop - 0.9 : -s.y + 0.005], (s) => [-E, yTop]);
+    // laje do viaduto vista de baixo
+    let i0 = null; for (let i = 0; i < S.length; i++) { const b = isBridge(S[i]); if (b && i0 === null) i0 = i; if ((!b || i === S.length - 1) && i0 !== null) { strip(conc, () => [E, -0.9], () => [-E, -0.9], i0, Math.max(i0 + 1, i)); i0 = null; } }
+    // pilares
+    const pm = roadMat('#9a978f', { r: .9 }); let next = 0;
+    for (const s of S) if (isBridge(s) && s.s >= next) { next = s.s + 24; const ph = s.y - 0.9; for (const sx of p.lanes > 2 ? [-1, 1] : [0]) cyl(0.6, 0.6, ph, pm, s.x + s.rx * sx * hw * 0.5, ph / 2, s.z + s.rz * sx * hw * 0.5, g, 12); box(E * 2, 0.6, 1.4, pm, s.x, s.y - 1.2, s.z, g).rotation.y = Math.atan2(s.tx, s.tz); }
+  }
+  // guard-rail (automático nos viadutos)
+  const guardAll = p.guard, yG = p.sidewalk ? lift + 0.15 : lift;
+  if (guardAll || (p.bridge && S.some(isBridge))) {
+    const gm = roadMat('#b9bcc0', { r: .4, m: .6 }), off = E - 0.25;
+    const want = (s) => guardAll || isBridge(s);
+    let i0 = null; for (let i = 0; i < S.length; i++) { const w = want(S[i]); if (w && i0 === null) i0 = i; if ((!w || i === S.length - 1) && i0 !== null) { const a = i0, b = Math.max(i0 + 1, i); strip(gm, () => [off, yG + 0.5], () => [off, yG + 0.8], a, b, false); strip(gm, () => [-off, yG + 0.8], () => [-off, yG + 0.5], a, b, false); strip(gm, () => [off, yG + 0.8], () => [off, yG + 0.5], a, b, false); strip(gm, () => [-off, yG + 0.5], () => [-off, yG + 0.8], a, b, false); i0 = null; } }
+    let nx = 0; for (const s of S) if (want(s) && s.s >= nx) { nx = s.s + 4; for (const sx of [-1, 1]) box(0.1, 0.8, 0.1, gm, s.x + s.rx * sx * (off + 0.05), s.y + yG + 0.4, s.z + s.rz * sx * (off + 0.05), g); }
+  }
+  g.userData.road = { S, len, hw, E, bridgeH: p.bridge ? 3 : 1e9 };
+  return g;
+}
+/* ---------- altura do terreno (estradas) ---------- */
+let _groundTick = 0; const _roadWorld = new Map();
+function roadsWorld() {
+  const out = [];
+  for (const o of project.objects) {
+    if (o.type !== 'roadpath' || o.hidden) continue; const r = rt.get(o.id); if (!r || !r.g.userData.road) continue;
+    let c = _roadWorld.get(o.id);
+    r.g.updateMatrixWorld(true); const m = r.g.matrixWorld, R0 = r.g.userData.road, key = m.elements.join(',') + '|' + R0.len + '|' + R0.hw + '|' + R0.E + '|' + R0.S.length + '|' + R0.S[R0.S.length >> 1].y;
+    if (!c || c.key !== key) {
+      const R = r.g.userData.road, v = new THREE.Vector3(), d = new THREE.Vector3(), q = new THREE.Quaternion(); r.g.getWorldQuaternion(q); const sc = r.g.getWorldScale(new THREE.Vector3());
+      const S = R.S.map(s => { v.set(s.x, s.y, s.z).applyMatrix4(m); d.set(s.rx, 0, s.rz).applyQuaternion(q); return { x: v.x, y: v.y, z: v.z, rx: d.x, rz: d.z }; });
+      c = { key, S, hw: R.hw * sc.x, E: R.E * sc.x, bridgeH: R.bridgeH }; _roadWorld.set(o.id, c);
+    }
+    out.push(c);
+  }
+  return out;
+}
+let _roadsFrame = null;
+function groundAt(x, z, prevH) {
+  if (!_roadsFrame || _roadsFrame.t !== _groundTick) _roadsFrame = { t: _groundTick, list: roadsWorld() };
+  let best = null, bestD = 1e9;
+  for (const R of _roadsFrame.list) {
+    const S = R.S; let bi = -1, bd = 1e18;
+    for (let i = 0; i < S.length; i += 4) { const dx = x - S[i].x, dz = z - S[i].z, dd = dx * dx + dz * dz; if (dd < bd) { bd = dd; bi = i; } }
+    for (let i = Math.max(0, bi - 4); i <= Math.min(S.length - 1, bi + 4); i++) { const dx = x - S[i].x, dz = z - S[i].z, dd = dx * dx + dz * dz; if (dd < bd) { bd = dd; bi = i; } }
+    const s = S[bi], lat = Math.abs((x - s.x) * s.rx + (z - s.z) * s.rz);
+    const reach = R.E + Math.abs(s.y) * 1.6 + 0.6; if (lat > reach) continue;
+    let h;
+    if (lat <= R.E) h = s.y; else if (s.y > R.bridgeH) continue; else h = lerp(s.y, 0, (lat - R.E) / Math.max(0.01, reach - R.E));
+    if (lat < bestD) { bestD = lat; best = h; }
+  }
+  return best;
+}
+function hasRoadRelief() { return project.objects.some(o => o.type === 'roadpath' && !o.hidden && roadPts(o.params).some(p => Math.abs(p[1]) > 0.01)); }
+function followsGround(o) {
+  if (o.cons && o.cons.ground === false) return false;
+  const pl = ASSETS[o.type] && ASSETS[o.type].pilot; return pl === 'car' || pl === 'walker' || isQuadType(o.type);
+}
+/* ---------- edição: alças no viewport ---------- */
+const roadHandles = new THREE.Group(); roadHandles.renderOrder = 10; scene.add(roadHandles); sceneHelpers.push(roadHandles);
+const _hMat = new THREE.MeshBasicMaterial({ color: '#ffb02e', depthTest: false, transparent: true, opacity: .95 }), _hMatSel = new THREE.MeshBasicMaterial({ color: '#ffffff', depthTest: false });
+const _hGeo = new THREE.SphereGeometry(1, 16, 10);
+let roadDrag = null, roadSelPt = -1;
+function updateRoadHandles() {
+  roadHandles.clear(); roadHandles.userData.road = null;
+  const o = sel && getObj(sel); if (!o || o.type !== 'roadpath') return;
+  const r = rt.get(o.id); if (!r) return; r.g.updateMatrixWorld(true);
+  const pts = roadPts(o.params), v = new THREE.Vector3(), line = []; roadHandles.userData.road = o.id; syncRoadHandles();
+  pts.forEach((p, i) => {
+    v.set(p[0], p[1], p[2]);
+    const h = new THREE.Mesh(_hGeo, i === roadSelPt ? _hMatSel : _hMat); h.position.copy(v); h.scale.setScalar(0.9); h.userData.roadPt = i; h.renderOrder = 11; roadHandles.add(h);
+    if (Math.abs(p[1]) > 0.05) { const st = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, Math.abs(p[1]), 6), _hMat); st.position.set(v.x, v.y - p[1] / 2, v.z); roadHandles.add(st); }
+    line.push(v.clone().setY(v.y + 0.3));
+  });
+  if (o.params.closed && line.length > 2) line.push(line[0]);
+  const lg = new THREE.BufferGeometry().setFromPoints(line); const ln = new THREE.Line(lg, new THREE.LineDashedMaterial({ color: '#ffb02e', dashSize: 1.5, gapSize: 1, depthTest: false })); ln.computeLineDistances(); roadHandles.add(ln);
+}
+function syncRoadHandles() { const id = roadHandles.userData.road, r = id && rt.get(id); if (!r || !roadHandles.children.length && !roadHandles.userData.road) return; roadHandles.position.copy(r.g.position); roadHandles.quaternion.copy(r.g.quaternion); roadHandles.scale.copy(r.g.scale); roadHandles.updateMatrixWorld(true); }
+function roadRayNDC(e) { const rect = renderer.domElement.getBoundingClientRect(), vr = viewRect(); return { x: ((e.clientX - rect.left - vr.x) / vr.w) * 2 - 1, y: -((e.clientY - rect.top - (rect.height - vr.y - vr.h)) / vr.h) * 2 + 1 }; }
+const _rRay = new THREE.Raycaster(), _rPlane = new THREE.Plane(), _rHit = new THREE.Vector3();
+renderer.domElement.addEventListener('pointerdown', e => {
+  const o = sel && getObj(sel); if (!o || o.type !== 'roadpath' || e.button !== 0 || pilot.on) return;
+  const cam = currentViewCam(); if (!cam) return; _rRay.setFromCamera(roadRayNDC(e), cam);
+  const hit = _rRay.intersectObjects(roadHandles.children.filter(c => c.userData.roadPt != null), false)[0];
+  if (e.altKey && !hit) { // Alt+clique: novo ponto no fim
+    _rPlane.set(new THREE.Vector3(0, 1, 0), 0); if (!_rRay.ray.intersectPlane(_rPlane, _rHit)) return;
+    const r = rt.get(o.id), loc = r.g.worldToLocal(_rHit.clone()); const pts = roadPts(o.params).map(a => a.slice()); const last = pts[pts.length - 1];
+    pts.push([+loc.x.toFixed(2), last[1], +loc.z.toFixed(2)]); o.params.pts = pts; roadSelPt = pts.length - 1; rebuildRoad(o, true);
+    e.stopImmediatePropagation(); e.preventDefault(); return;
+  }
+  if (!hit) return;
+  e.stopImmediatePropagation(); e.preventDefault();
+  roadSelPt = hit.object.userData.roadPt; o.params.pts = roadPts(o.params).map(a => a.slice());
+  roadDrag = { o, i: roadSelPt, y0: e.clientY, vert: e.shiftKey, h0: o.params.pts[roadSelPt][1] };
+  orbit.enabled = false; renderer.domElement.setPointerCapture(e.pointerId); updateRoadHandles(); renderInspector();
+}, { capture: true });
+renderer.domElement.addEventListener('pointermove', e => {
+  if (!roadDrag) return; const { o, i } = roadDrag, r = rt.get(o.id), cam = currentViewCam(); if (!r || !cam) return;
+  const pt = o.params.pts[i];
+  if (roadDrag.vert) { pt[1] = +(roadDrag.h0 + (roadDrag.y0 - e.clientY) * 0.08).toFixed(2); }
+  else {
+    _rRay.setFromCamera(roadRayNDC(e), cam); const wp = new THREE.Vector3(pt[0], pt[1], pt[2]).applyMatrix4(r.g.matrixWorld);
+    _rPlane.set(new THREE.Vector3(0, 1, 0), -wp.y); if (!_rRay.ray.intersectPlane(_rPlane, _rHit)) return;
+    const loc = r.g.worldToLocal(_rHit.clone()); pt[0] = +loc.x.toFixed(2); pt[2] = +loc.z.toFixed(2);
+  }
+  rebuildRoad(o, false);
+}, { capture: true });
+renderer.domElement.addEventListener('pointerup', e => { if (!roadDrag) return; roadDrag = null; orbit.enabled = true; downPt = null; commit(); renderInspector(); }, { capture: true });
+function rebuildRoad(o, doCommit) { buildRuntime(o); _roadWorld.delete(o.id); _groundTick++; updateRoadHandles(); bump(); if (doCommit) { commit(); renderInspector(); } }
+/* ---------- inspector ---------- */
+function roadSectionHTML(o) {
+  const pts = roadPts(o.params), { S, len } = sampleRoad(o.params);
+  let maxG = 0; for (const s of S) maxG = Math.max(maxG, Math.abs(s.grade));
+  const ys = S.map(s => s.y);
+  let h = `<div class="hint" style="margin-top:0">Comprimento <b>${len.toFixed(0)} m</b> · desnível <b>${(Math.max(...ys) - Math.min(...ys)).toFixed(1)} m</b> · rampa máx. <b>${(maxG * 100).toFixed(0)}%</b></div>`;
+  h += `<div class="chips" style="display:flex;flex-wrap:wrap;gap:4px;margin:6px 0">${Object.entries(ROAD_PRESETS).map(([k, v]) => `<button class="chip" data-rpre="${k}">${v.ic} ${v.lb}</button>`).join('')}</div>`;
+  h += `<div class="hint">Arraste as bolinhas laranja no viewport para fazer curvas. <b>Shift + arrastar</b> sobe/desce o ponto (rampa). <b>Alt + clique</b> no chão adiciona um ponto no fim.</div>`;
+  h += `<table class="rpt" style="width:100%;border-collapse:collapse;font-size:11px;margin:4px 0"><tr style="color:var(--tx3)"><td>#</td><td>X</td><td>Z</td><td>Altura</td><td></td></tr>` +
+    pts.map((p, i) => `<tr style="${i === roadSelPt ? 'background:rgba(255,176,46,.12)' : ''}"><td>${i + 1}</td>${[0, 2, 1].map(k => `<td><input type="number" step="${k === 1 ? 0.5 : 1}" data-rp="${i}:${k}" value="${p[k]}" style="width:100%"></td>`).join('')}<td><button class="ghost" data-rdel="${i}" title="Remover ponto" ${pts.length <= 2 ? 'disabled' : ''}>✕</button></td></tr>`).join('') + `</table>`;
+  h += `<div class="btnrow"><button data-radd="1">＋ Ponto no fim</button><button data-radd="mid">＋ Ponto no meio</button><button data-rflat="1">Nivelar tudo</button></div>`;
+  const vehs = project.objects.filter(x => followsGround(x));
+  h += `<div class="ph" style="margin:10px 0 4px;padding:0">🚗 Animar ao longo da estrada</div>
+    <div class="prow wide"><span class="lb">Objeto</span><select id="rfObj">${vehs.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('') || '<option value="">— adicione um carro/pessoa —</option>'}</select></div>
+    <div class="prow wide"><span class="lb">Velocidade (km/h)</span><input type="number" id="rfSpd" value="60" step="5" min="1"></div>
+    <div class="prow wide"><span class="lb">Faixa</span><select id="rfLane">${Array.from({ length: o.params.lanes }, (_, i) => `<option value="${i}" ${i === o.params.lanes - 1 ? 'selected' : ''}>${i + 1}ª ${i === o.params.lanes - 1 ? '(direita)' : i === 0 ? '(esquerda)' : ''}</option>`).join('')}<option value="c">Centro</option></select></div>
+    <div class="prow wide"><span class="lb">Sentido</span><select id="rfDir"><option value="1">Do 1º ao último ponto</option><option value="-1">Contrário</option></select></div>
+    <div class="prow wide"><span class="lb">Começar em (%)</span><input type="number" id="rfStart" value="0" min="0" max="100" step="5"></div>
+    <div class="btnrow"><button class="pri" data-rfollow="1">▶ Gerar movimento a partir do frame atual</button></div>
+    <div class="hint">Cria keyframes de posição e direção na velocidade escolhida; a altura e a inclinação vêm da estrada automaticamente.</div>`;
+  return h;
+}
+function roadFollow(road, obj, kmh, lane, dir, startPct, fStart, silent) {
+  const r = rt.get(road.id); if (!r || !obj) return; r.g.updateMatrixWorld(true);
+  const { S, len } = sampleRoad(road.params), { hw } = roadDims(road.params), lw = road.params.laneW;
+  const lat = lane === 'c' ? 0 : (-hw + lw * (+lane + 0.5)) * (dir > 0 ? 1 : -1);
+  const v = kmh / 3.6, fps = project.fps, f0 = fStart ?? curFrame; let s = len * clamp(startPct / 100, 0, 1);
+  const maxF = project.duration; const out = { px: [], pz: [], ry: [] }; const m = r.g.matrixWorld, q = r.g.getWorldQuaternion(new THREE.Quaternion());
+  const at = (sv) => { const u = clamp(sv / len, 0, 1) * (S.length - 1), i = Math.min(S.length - 2, Math.floor(u)), t = u - i, a = S[i], b = S[i + 1]; return { x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t), z: lerp(a.z, b.z, t), tx: lerp(a.tx, b.tx, t), tz: lerp(a.tz, b.tz, t), rx: lerp(a.rx, b.rx, t), rz: lerp(a.rz, b.rz, t) }; };
+  let prevYaw = null; const P2 = new THREE.Vector3(), D2 = new THREE.Vector3();
+  for (let f = f0; f <= maxF; f++) {
+    const c = at(s); P2.set(c.x + c.rx * lat, c.y, c.z + c.rz * lat).applyMatrix4(m); D2.set(c.tx * dir, 0, c.tz * dir).applyQuaternion(q);
+    let yaw = Math.atan2(D2.x, D2.z) / DEG; if (prevYaw != null) { while (yaw - prevYaw > 180) yaw -= 360; while (yaw - prevYaw < -180) yaw += 360; } prevYaw = yaw;
+    out.px.push({ f, v: P2.x }); out.pz.push({ f, v: P2.z }); out.ry.push({ f, v: yaw });
+    s += dir * v / fps; if (!road.params.closed && (s < 0 || s > len)) break; if (road.params.closed) s = ((s % len) + len) % len;
+  }
+  if (out.px.length < 2) return silent ? null : toast('Sem espaço: mude o começo ou o sentido');
+  writeSamples(obj, 'px', out.px, 'simplify', 0.01); writeSamples(obj, 'pz', out.pz, 'simplify', 0.01); writeSamples(obj, 'ry', out.ry, 'simplify', 0.08);
+  if (obj.tracks.py && obj.tracks.py.length) { /* mantém */ } else obj.base.py = 0;
+  if (silent) return; commit(); tlDirty = true; pathVer = -1; bump(); toast(`${obj.name} anda pela estrada: frames ${f0}–${out.px[out.px.length - 1].f}`);
+}
+function initRoadUI() {
+  insp.addEventListener('change', e => { const o = sel && getObj(sel); if (o && e.target.id === 'consGround') { o.cons.ground = e.target.checked ? undefined : false; bump(); commit(); } });
+  insp.addEventListener('click', e => {
+    const o = sel && getObj(sel), b = e.target.closest('button'); if (!o || !b || o.type !== 'roadpath') return;
+    if (b.dataset.rpre) { const pr = ROAD_PRESETS[b.dataset.rpre]; o.params.pts = pr.pts.map(a => a.slice()); o.params.closed = !!pr.closed; o.params.bridge = !pr.noBridge; roadSelPt = -1; rebuildRoad(o, true); }
+    if (b.dataset.rdel != null) { const pts = roadPts(o.params).map(a => a.slice()); pts.splice(+b.dataset.rdel, 1); o.params.pts = pts; roadSelPt = -1; rebuildRoad(o, true); }
+    if (b.dataset.radd) {
+      const pts = roadPts(o.params).map(a => a.slice());
+      if (b.dataset.radd === 'mid') { const i = roadSelPt > 0 ? roadSelPt : Math.floor(pts.length / 2); const a = pts[i - 1], c = pts[i]; pts.splice(i, 0, [(a[0] + c[0]) / 2, (a[1] + c[1]) / 2, (a[2] + c[2]) / 2].map(v => +v.toFixed(2))); roadSelPt = i; }
+      else { const a = pts[pts.length - 2], c = pts[pts.length - 1], dx = c[0] - a[0], dz = c[2] - a[2], l = Math.hypot(dx, dz) || 1; pts.push([+(c[0] + dx / l * 40).toFixed(2), c[1], +(c[2] + dz / l * 40).toFixed(2)]); roadSelPt = pts.length - 1; }
+      o.params.pts = pts; rebuildRoad(o, true);
+    }
+    if (b.dataset.rflat) { o.params.pts = roadPts(o.params).map(a => [a[0], 0, a[2]]); rebuildRoad(o, true); }
+    if (b.dataset.rfollow) roadFollow(o, getObj($('#rfObj').value), +$('#rfSpd').value || 60, $('#rfLane').value, +$('#rfDir').value, +$('#rfStart').value || 0);
+  });
+  insp.addEventListener('change', e => {
+    const o = sel && getObj(sel), t = e.target; if (!o || o.type !== 'roadpath' || !t.dataset.rp) return;
+    const [i, k] = t.dataset.rp.split(':').map(Number); o.params.pts = roadPts(o.params).map(a => a.slice()); o.params.pts[i][k] = +t.value || 0; roadSelPt = i; rebuildRoad(o, true);
   });
 }
 

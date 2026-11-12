@@ -213,7 +213,7 @@ function demoProject() {
    INICIALIZAÇÃO
    ============================================================ */
 function init() {
-  initRealcarUI(); initThumbs(); initCinemaUI(); initModelUI();
+  initRealcarUI(); initThumbs(); initCinemaUI(); initModelUI(); initRoadUI();
   renderAssets();
   let loaded = false;
   try { const s = localStorage.getItem('layout3d.autosave'); if (s) { const d = JSON.parse(s); if (d && d.objects && d.objects.length) { loadProjectData(d); loaded = true; toast('Sessão anterior restaurada'); } } } catch (e) { }
