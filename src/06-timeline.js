@@ -2,7 +2,8 @@
    TIMELINE: DOPE SHEET + GRAPH EDITOR + VELOCIDADE
    ============================================================ */
 const tlc = $('#tlcanvas'), tctx = tlc.getContext('2d'), chanList = $('#chanList');
-const RULER = 26, SB = 46; let rowsH = 0;
+const RULER = 26, SB = 62; let rowsH = 0;
+const TOP = () => RULER + (tl.mode === 'dope' ? SB : 0); // trilha de MONTAGEM fica logo abaixo da régua
 const tl = { mode: 'dope', v0: -2, v1: 242, gy0: -10, gy1: 10, norm: false, W: 0, H: 0, drag: null, box: null, hoverKey: null };
 const graphVis = new Set(); let graphVisFor = null;
 let rows = [];
@@ -32,11 +33,11 @@ function renderChanList() {
   const o = sel && getObj(sel);
   if (tl.mode === 'dope') {
     buildRows();
-    chanList.innerHTML = `<div style="min-height:100%;display:flex;flex-direction:column"><div style="height:${RULER}px;flex:none;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 10px;color:var(--tx3);font-size:11px">Tempo atual</div>` + rows.map(r => {
+    chanList.innerHTML = `<div style="min-height:100%;display:flex;flex-direction:column"><div style="height:${RULER}px;flex:none;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 10px;color:var(--tx3);font-size:11px;position:sticky;top:0;background:var(--bg1);z-index:3">Tempo atual</div><div id="sbHead" style="top:${RULER}px;height:${SB}px"><div style="display:flex;flex-direction:column;gap:2px"><span>🎬 Montagem</span><span class="sub" style="font-weight:400;color:var(--tx3);font-size:10.5px">${(project.shots || []).length ? project.shots.length + ' planos · arraste câmeras aqui' : 'arraste câmeras para cá'}</span></div><button data-sbadd="1" title="Adicionar plano: câmera selecionada a partir do frame atual">＋</button></div>` + rows.map(r => {
       if (r.t === 'obj') { const ty = r.o.type === 'camera' ? 'câmera' : Object.keys(actionsFor(r.o)).length ? 'animação' : 'keyframe'; return `<div class="crow" data-id="${r.o.id}" style="height:${r.h}px;flex:none;${r.o.id === sel ? 'background:var(--selbg)' : ''}"><span style="width:16px;text-align:center">${ASSETS[r.o.type].icon}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">${esc(r.o.name)}</span><button class="add" data-add="${r.o.id}" title="Adicionar ${ty}">＋</button></div>`; }
       if (r.t === 'grp') return `<div class="crow" style="height:${r.h}px;flex:none;padding-left:30px;color:var(--tx2);font-size:11px">${GROUPS[r.gk].lb}</div>`;
       const c = r.chs[0]; return `<div class="crow" style="height:${r.h}px;flex:none;padding-left:42px;color:var(--tx3);font-size:11px"><span class="cdot" style="background:${CH[c].col}"></span>${CH[c].lb}${GROUPS[CH[c].g].unit ? ' ' + GROUPS[CH[c].g].unit : ''}</div>`;
-    }).join('') + `<div style="flex:1;min-height:20px"></div><div id="sbHead">🎬 Storyboard <span class="sub" style="font-weight:400;color:var(--tx3);font-size:11px">${(project.shots || []).length || ''}</span><button data-sbadd="1" title="Adicionar plano com a câmera selecionada a partir do frame atual">＋</button></div></div>`;
+    }).join('') + `<div style="flex:1;min-height:20px"></div></div>`;
   } else if (tl.mode === 'graph') {
     if (!o) { chanList.innerHTML = '<div class="hint" style="padding:10px">Selecione um objeto para editar curvas.</div>'; return; }
     const anim = channelsOf(o).filter(c => hasAnim(o, c));
@@ -85,10 +86,10 @@ function diamond(ctx, x, y, r, fill, stroke) { ctx.beginPath(); ctx.moveTo(x, y 
 function keysOfRow(r) { const m = new Map(); for (const ch of r.chs) for (const k of r.o.tracks[ch] || []) { const f = Math.round(k.f * 1000) / 1000; if (!m.has(f)) m.set(f, []); m.get(f).push({ o: r.o, ch, k }); } return m; }
 function isSel(k) { for (const s of selKeys) if (s.k === k) return true; return false; }
 function drawDope(ctx) {
-  const sy = chanList.scrollTop, bottom = tl.H - SB;
-  ctx.save(); ctx.beginPath(); ctx.rect(0, RULER, tl.W, bottom - RULER); ctx.clip();
+  const sy = chanList.scrollTop, bottom = tl.H, T0 = TOP();
+  ctx.save(); ctx.beginPath(); ctx.rect(0, T0, tl.W, bottom - T0); ctx.clip();
   rows.forEach((r, i) => {
-    const ROWH = r.h, y = RULER + r.y0 - sy; if (y + ROWH < RULER || y > bottom) return;
+    const ROWH = r.h, y = T0 + r.y0 - sy; if (y + ROWH < T0 || y > bottom) return;
     if (r.o.id === sel && r.t === 'obj') { ctx.fillStyle = 'rgba(122,167,255,.06)'; ctx.fillRect(0, y, tl.W, ROWH); }
     ctx.fillStyle = '#1d1d20'; ctx.fillRect(0, y + ROWH - 1, tl.W, 1);
     if (r.t === 'obj') drawClips(ctx, r, y, ROWH);
@@ -105,20 +106,36 @@ function drawDope(ctx) {
     }
   });
   ctx.restore();
-  if (!rows.length) { ctx.fillStyle = '#6b717c'; ctx.font = '12px Inter'; ctx.fillText('Sem objetos. Adicione personagens, objetos ou câmeras pela biblioteca.', 20, RULER + 30); }
+  if (!rows.length) { ctx.fillStyle = '#6b717c'; ctx.font = '12px Inter'; ctx.fillText('Sem objetos. Adicione personagens, objetos ou câmeras pela biblioteca.', 20, T0 + 30); }
   drawStoryboard(ctx);
 }
+const _bandImg = new Map(); let _bandQ = [];
+function bandThumb(sh) { // miniatura do plano (gerada aos poucos, fora do play)
+  const key = sh.cam + ':' + Math.round((sh.start + sh.end) / 2) + ':' + project.aspect; const im = _bandImg.get(key);
+  if (im) return im.complete ? im : null; if (!_bandQ.includes(key)) _bandQ.push(key); return null;
+}
+function pumpBandThumbs() {
+  if (playing || !_bandQ.length || typeof shotThumb !== 'function') return; const key = _bandQ.shift(), [cam, mid] = key.split(':');
+  const sh = (project.shots || []).find(s => s.cam === cam && Math.round((s.start + s.end) / 2) === +mid); if (!sh) return;
+  const url = shotThumb(sh); applyFrame(curFrame); if (!url) return; const im = new Image(); im.onload = () => { tlDirty = true; }; im.src = url; _bandImg.set(key, im);
+}
 function drawStoryboard(ctx) {
-  const y0 = tl.H - SB; ctx.fillStyle = '#121214'; ctx.fillRect(0, y0, tl.W, SB); ctx.fillStyle = '#303034'; ctx.fillRect(0, y0, tl.W, 1);
+  const y0 = RULER; ctx.fillStyle = '#121214'; ctx.fillRect(0, y0, tl.W, SB); ctx.fillStyle = '#303034'; ctx.fillRect(0, y0 + SB - 1, tl.W, 1);
   const s = project.shots || [];
-  if (!s.length) { ctx.fillStyle = '#6c6c74'; ctx.font = '12px Inter'; ctx.textBaseline = 'middle'; ctx.fillText('Escolha uma câmera e clique ＋ em Storyboard para adicionar um plano (sem planos = câmera ativa contínua)', 12, y0 + SB / 2); return; }
-  ctx.font = '500 11.5px Inter'; ctx.textBaseline = 'middle';
-  for (const sh of s) {
-    const x0 = fx(sh.start) + 1, x1 = fx(sh.end + 1) - 1, o = getObj(sh.cam); if (!o) continue; const col = camColor(sh.cam), on = selShot === sh;
-    ctx.fillStyle = on ? 'rgba(122,167,255,.28)' : 'rgba(255,255,255,.06)'; roundRect(ctx, x0, y0 + 6, Math.max(4, x1 - x0), SB - 12, 6); ctx.fill(); ctx.strokeStyle = on ? '#8bb6ff' : 'rgba(255,255,255,.14)'; ctx.stroke();
-    ctx.fillStyle = col; ctx.fillRect(x0 + 1, y0 + 8, 3, SB - 16);
-    ctx.save(); ctx.beginPath(); ctx.rect(x0, y0, Math.max(2, x1 - x0 - 4), SB); ctx.clip(); ctx.fillStyle = '#e8eaed'; ctx.fillText('🎥 ' + o.name, x0 + 10, y0 + SB / 2 - 6); ctx.fillStyle = '#8a8a92'; ctx.font = '10.5px Inter'; ctx.fillText(((sh.end - sh.start + 1) / project.fps).toFixed(1) + 's · ' + fmt(getVal(o, 'focal', sh.start), 0) + 'mm', x0 + 10, y0 + SB / 2 + 8); ctx.font = '500 11.5px Inter'; ctx.restore();
-  }
+  if (!s.length) { ctx.fillStyle = '#7d8088'; ctx.font = '12px Inter'; ctx.textBaseline = 'middle'; ctx.fillText('Montagem vazia — arraste câmeras do painel Objetos para esta faixa (ou ＋). Cada bloco é um plano; o play segue a montagem.', 12, y0 + SB / 2); return; }
+  const d = tl.drag && tl.drag.t === 'shot' ? tl.drag : null;
+  s.forEach((sh, i) => {
+    const x0 = fx(sh.start) + 1, x1 = fx(sh.end + 1) - 1, o = getObj(sh.cam); if (!o) return; const col = camColor(sh.cam), on = selShot === sh, live = curFrame >= sh.start && curFrame <= sh.end, w = Math.max(4, x1 - x0), H = SB - 10;
+    ctx.save(); roundRect(ctx, x0, y0 + 5, w, H, 6); ctx.clip();
+    ctx.fillStyle = '#1f2024'; ctx.fillRect(x0, y0 + 5, w, H);
+    const im = bandThumb(sh); if (im) { const th = H, tw = Math.min(w, th * aspectNum()); ctx.globalAlpha = 0.9; ctx.drawImage(im, x0, y0 + 5, tw, th); ctx.globalAlpha = 1; const gr = ctx.createLinearGradient(x0, 0, x0 + tw, 0); gr.addColorStop(0, 'rgba(31,32,36,0)'); gr.addColorStop(1, 'rgba(31,32,36,1)'); ctx.fillStyle = gr; ctx.fillRect(x0 + tw * 0.45, y0 + 5, tw * 0.55 + 1, H); }
+    ctx.fillStyle = col; ctx.fillRect(x0, y0 + 5, 3, H);
+    ctx.fillStyle = col; roundRect(ctx, x0 + 7, y0 + 10, 20, 17, 4); ctx.fill(); ctx.fillStyle = '#111'; ctx.font = '700 11px Inter'; ctx.textBaseline = 'middle'; ctx.textAlign = 'center'; ctx.fillText(String(i + 1), x0 + 17, y0 + 19); ctx.textAlign = 'left';
+    ctx.shadowColor = 'rgba(0,0,0,.9)'; ctx.shadowBlur = 4; ctx.fillStyle = '#f1f2f4'; ctx.font = '600 11.5px Inter'; ctx.fillText(sh.name || o.name, x0 + 32, y0 + 19);
+    ctx.fillStyle = '#9a9ea6'; ctx.font = '10.5px Inter'; ctx.fillText(((sh.end - sh.start + 1) / project.fps).toFixed(1) + ' s · ' + fmt(getVal(o, 'focal', Math.round((sh.start + sh.end) / 2)), 0) + ' mm', x0 + 9, y0 + 40); ctx.shadowBlur = 0;
+    ctx.restore();
+    ctx.strokeStyle = d && d.drop === sh ? '#ffb02e' : on ? '#8bb6ff' : live ? 'rgba(255,255,255,.45)' : 'rgba(255,255,255,.12)'; ctx.lineWidth = d && d.drop === sh ? 2 : 1; roundRect(ctx, x0, y0 + 5, w, H, 6); ctx.stroke(); ctx.lineWidth = 1;
+  });
 }
 let selShot = null;
 function graphCurves() { const o = sel && getObj(sel); if (!o || tl.mode !== 'graph') return []; return channelsOf(o).filter(c => hasAnim(o, c) && graphVis.has(c)).map(c => ({ o, ch: c, keys: o.tracks[c], s: chScale(o, c) })); }
@@ -190,7 +207,7 @@ function fitGraph() {
 /* ---------- interação ---------- */
 function mpos(e) { const r = tlc.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
 function hitDope(x, y) {
-  const sy = chanList.scrollTop, yy = y - RULER + sy; const r = rows.find(r2 => yy >= r2.y0 && yy < r2.y0 + r2.h); if (!r) return null;
+  const sy = chanList.scrollTop, yy = y - TOP() + sy; const r = rows.find(r2 => yy >= r2.y0 && yy < r2.y0 + r2.h); if (!r) return null;
   const km = keysOfRow(r); let best = null, bd = 7;
   for (const [f, ks] of km) { const d = Math.abs(fx(f) - x); if (d < bd) { bd = d; best = ks; } }
   return best ? { row: r, ks: best } : { row: r, ks: null };
@@ -211,10 +228,10 @@ tlc.addEventListener('pointerdown', e => {
   const p = mpos(e); tlc.setPointerCapture(e.pointerId);
   if (e.button === 1 || e.button === 2 || (e.altKey && e.button === 0 && tl.mode === 'graph' && !hitGraph(p.x, p.y))) { tl.drag = { t: 'pan', x: p.x, y: p.y, v0: tl.v0, v1: tl.v1, g0: tl.gy0, g1: tl.gy1 }; return; }
   if (p.y < RULER) { tl.drag = { t: 'scrub' }; setFrame(xf(p.x)); return; }
-  if (tl.mode === 'dope' && p.y > tl.H - SB) {
+  if (tl.mode === 'dope' && p.y >= RULER && p.y < RULER + SB) {
     const f = xf(p.x), sh = (project.shots || []).find(s => f >= s.start && f <= s.end + 1);
     selShot = sh || null; selClip = null;
-    if (sh) { const edge = Math.abs(p.x - fx(sh.start)) < 6 ? 'l' : Math.abs(p.x - fx(sh.end + 1)) < 6 ? 'r' : null; tl.drag = { t: 'shot', sh, edge, x: p.x, s0: sh.start, e0: sh.end }; if (!edge) setFrame(sh.start); }
+    if (sh) { const edge = Math.abs(p.x - fx(sh.start)) < 6 ? 'l' : Math.abs(p.x - fx(sh.end + 1)) < 6 ? 'r' : null; tl.drag = { t: 'shot', sh, edge, x: p.x, s0: sh.start, e0: sh.end }; if (!edge) setFrame(Math.max(sh.start, Math.min(sh.end, xf(p.x)))); }
     tlDirty = true; return;
   }
   if (tl.mode === 'dope') {
@@ -248,7 +265,11 @@ tlc.addEventListener('pointermove', e => {
   else if (d.t === 'pan') { const df = (p.x - d.x) / tl.W * (d.v1 - d.v0); tl.v0 = d.v0 - df; tl.v1 = d.v1 - df; const dv = (p.y - d.y) / (tl.H - RULER - 8) * (d.g1 - d.g0); tl.gy0 = d.g0 + dv; tl.gy1 = d.g1 + dv; }
   else if (d.t === 'box') { tl.box.x1 = p.x; tl.box.y1 = p.y; }
   else if (d.t === 'clip') { const df = Math.round(xf(p.x) - xf(d.x)), c = d.hc.c; if (d.hc.edge === 'l') c.start = Math.min(d.s0 + df, c.end - 2); else if (d.hc.edge === 'r') c.end = Math.max(d.e0 + df, c.start + 2); else { c.start = clamp(d.s0 + df, 0, project.duration - (d.e0 - d.s0)); c.end = c.start + (d.e0 - d.s0); } d.moved = true; }
-  else if (d.t === 'shot') { const df = Math.round(xf(p.x) - xf(d.x)), s = d.sh; if (d.edge === 'l') s.start = clamp(d.s0 + df, 0, s.end - 1); else if (d.edge === 'r') s.end = clamp(d.e0 + df, s.start + 1, project.duration); d.moved = true; }
+  else if (d.t === 'shot') { const df = Math.round(xf(p.x) - xf(d.x)), s = d.sh, S = project.shots, i = S.indexOf(s);
+    if (d.edge === 'l') { s.start = clamp(d.s0 + df, S[i - 1] ? S[i - 1].start + 1 : 0, s.end - 1); if (S[i - 1]) S[i - 1].end = s.start - 1; else s.start = 0; }
+    else if (d.edge === 'r') { s.end = clamp(d.e0 + df, s.start + 1, S[i + 1] ? S[i + 1].end - 1 : project.duration); if (S[i + 1]) S[i + 1].start = s.end + 1; else s.end = project.duration; }
+    else { d.drop = Math.abs(p.x - d.x) > 8 ? S.find(x => xf(p.x) >= x.start && xf(p.x) <= x.end && x !== s) : null; }
+    d.moved = true; tlDirty = true; }
   else if (d.t === 'dkeys') {
     const df = Math.round(xf(p.x) - xf(d.x)); if (df !== 0) d.moved = true;
     for (const r of d.orig) r.s.k.f = r.f + df; bump();
@@ -274,12 +295,13 @@ tlc.addEventListener('pointerup', e => {
   if (d.t === 'box') {
     const b = tl.box; tl.box = null; const x0 = Math.min(b.x0, b.x1), x1 = Math.max(b.x0, b.x1), y0 = Math.min(b.y0, b.y1), y1 = Math.max(b.y0, b.y1);
     if (x1 - x0 < 3 && y1 - y0 < 3) { if (tl.mode === 'dope') { setFrame(xf(b.x0)); const h = hitDope(b.x0, b.y0); if (h && h.row && h.row.o.id !== sel) select(h.row.o.id); } }
-    else if (tl.mode === 'dope') { const sy = chanList.scrollTop; rows.forEach((r, i) => { const cy = RULER + r.y0 - sy + r.h / 2; if (cy < y0 || cy > y1) return; for (const [f, ks] of keysOfRow(r)) { const x = fx(f); if (x >= x0 && x <= x1) ks.forEach(k => { if (!isSel(k.k)) selKeys.add(k); }); } }); }
+    else if (tl.mode === 'dope') { const sy = chanList.scrollTop; rows.forEach((r, i) => { const cy = TOP() + r.y0 - sy + r.h / 2; if (cy < y0 || cy > y1) return; for (const [f, ks] of keysOfRow(r)) { const x = fx(f); if (x >= x0 && x <= x1) ks.forEach(k => { if (!isSel(k.k)) selKeys.add(k); }); } }); }
     else if (tl.mode === 'graph') { for (const c of graphCurves()) for (const k of c.keys) { const x = fx(k.f), y = gy(k.v, c.s); if (x >= x0 && x <= x1 && y >= y0 && y <= y1 && !isSel(k)) selKeys.add({ o: c.o, ch: c.ch, k }); } }
   }
   if ((d.t === 'dkeys' || d.t === 'gkeys') && d.moved) { const tracks = new Set(); for (const r of d.orig) tracks.add(r.s.o.tracks[r.s.ch]); for (const t of tracks) { sortKeys(t); autoHandles(t); } cleanSelKeys(); bump(); commit(); }
   if (d.t === 'handle') commit();
-  if ((d.t === 'clip' || d.t === 'shot') && d.moved) { if (d.t === 'shot') normalizeShots(); commit(); }
+  if (d.t === 'shot' && d.drop) { const a = d.sh, b = d.drop; for (const k of ['cam', 'name', 'notes']) { const t = a[k]; a[k] = b[k]; b[k] = t; } toast('Planos trocados de lugar'); }
+  if ((d.t === 'clip' || d.t === 'shot') && d.moved) { if (d.t === 'shot') normalizeShots(); commit(); renderViewSel(); }
   tlDirty = true;
 });
 tlc.addEventListener('dblclick', e => {

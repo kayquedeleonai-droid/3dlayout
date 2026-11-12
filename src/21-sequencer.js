@@ -112,6 +112,7 @@ function cineTick(f) {
 }
 function openCinema() {
   const cams = project.objects.filter(o => o.type === 'camera'); if (!cams.length) return toast('Adicione uma câmera primeiro');
+  if (!(project.shots && project.shots.length) && cams.length > 1) { const D = project.duration + 1; project.shots = cams.map((c, i) => ({ cam: c.id, start: Math.round(i * D / cams.length), end: Math.round((i + 1) * D / cams.length) - 1, name: c.name })); normalizeShots(); commit(); renderViewSel(); tlDirty = true; toast('Montagem criada com um plano por câmera — ajuste na faixa Montagem da timeline', 6000); }
   _cinePrev = { view: viewPick, loop, sel, frame: curFrame }; select(null); seqLoop = null;
   cinema = true; document.body.classList.add('cinema'); setView('cam'); cineSegs(); loop = $('#cineLoop').checked;
   setFrame(0); togglePlay(true);
@@ -128,3 +129,14 @@ $('#cineLoop').onchange = e => { loop = e.target.checked; };
 $('#cineSegs').addEventListener('pointerdown', e => { const r = $('#cineSegs').getBoundingClientRect(); setFrame(clamp(Math.round((e.clientX - r.left) / r.width * (project.duration + 1)), 0, project.duration)); });
 addEventListener('keydown', e => { if (!cinema) return; if (e.key === 'Escape') { closeCinema(); e.preventDefault(); } if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { const S = project.shots || []; if (!S.length) return; const i = S.findIndex(s => curFrame >= s.start && curFrame <= s.end), j = clamp(i + (e.key === 'ArrowRight' ? 1 : -1), 0, S.length - 1); setFrame(S[j].start); e.preventDefault(); e.stopPropagation(); } }, true);
 document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && cinema) { /* continua em modo cinema dentro da janela */ } });
+
+/* ---------- arrastar câmeras para a Montagem ---------- */
+function insertShotAt(cid, f) {
+  normalizeShots(); const S = project.shots; f = clamp(Math.round(f), 0, project.duration); const o = getObj(cid);
+  if (!S.length) project.shots = [{ cam: cid, start: 0, end: project.duration, name: o.name }];
+  else { const i = S.findIndex(x => f >= x.start && f <= x.end), cur = S[i]; if (!cur) return; if (f - cur.start < Math.max(6, (cur.end - cur.start) * 0.15)) { cur.cam = cid; cur.name = o.name; } else { S.splice(i + 1, 0, { cam: cid, start: f, end: cur.end, name: o.name }); cur.end = f - 1; } }
+  normalizeShots(); commit(); tlDirty = true; renderViewSel(); renderChanList(); toast(`Plano ${project.shots.findIndex(s => s.cam === cid && f >= s.start && f <= s.end) + 1}: ${o.name}`);
+}
+$('#outliner').addEventListener('dragstart', e => { const r = e.target.closest('.orow'); if (!r) return; const o = getObj(r.dataset.id); if (!o || o.type !== 'camera') { e.preventDefault(); return; } e.dataTransfer.setData('text/x-cam', o.id); e.dataTransfer.effectAllowed = 'copy'; });
+tlc.addEventListener('dragover', e => { if ([...e.dataTransfer.types].includes('text/x-cam')) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } });
+tlc.addEventListener('drop', e => { const id = e.dataTransfer.getData('text/x-cam'); if (!id) return; e.preventDefault(); if (tl.mode !== 'dope') { tl.mode = 'dope'; } const p = mpos(e); insertShotAt(id, xf(p.x)); });

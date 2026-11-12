@@ -77,6 +77,7 @@ function updateChase(dt) {
    LOOP PRINCIPAL
    ============================================================ */
 let last = performance.now(), exporting = false;
+let _bandTick = 0;
 function loopFn(now) {
   requestAnimationFrame(loopFn);
   const dt = Math.min(0.1, (now - last) / 1000); last = now;
@@ -95,7 +96,7 @@ function loopFn(now) {
   renderViewport(dt);
   refreshInspectorValues();
   if (tlDirty || playing || pilot.on) drawTL();
-  pumpThumbs();
+  pumpThumbs(); if ((++_bandTick % 8) === 0) pumpBandThumbs();
 }
 
 /* ============================================================
