@@ -141,7 +141,7 @@ function realisticProfile(o, opt = {}) {
   const n = R.length, vc = new Float64Array(n).fill(vMax);
   for (let i = 3; i < n - 3; i++) { // raio pela variação de direção em ±3 m
     const a = R[i - 3], b = R[i], c = R[i + 3], h1 = Math.atan2(b.x - a.x, b.z - a.z), h2 = Math.atan2(c.x - b.x, c.z - b.z); let dh = h2 - h1; while (dh > Math.PI) dh -= 2 * Math.PI; while (dh < -Math.PI) dh += 2 * Math.PI;
-    const k = Math.abs(dh) / Math.max(0.5, Math.hypot(c.x - a.x, c.z - a.z) / 2 * 2); vc[i] = Math.min(vMax, k > 1e-5 ? Math.sqrt(aLat / k) : vMax);
+    const k = Math.abs(dh) / Math.max(0.5, Math.hypot(c.x - a.x, c.z - a.z) / 2); vc[i] = Math.min(vMax, k > 1e-5 ? Math.sqrt(aLat / k) : vMax); // k = Δrumo entre as cordas ÷ distância entre seus centros
   }
   const v = new Float64Array(n); v[0] = Math.min(v0, vc[0]);
   for (let i = 1; i < n; i++) v[i] = Math.min(vc[i], Math.sqrt(v[i - 1] * v[i - 1] + 2 * aAcc * (D[i] - D[i - 1])));

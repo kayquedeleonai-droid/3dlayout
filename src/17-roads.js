@@ -17,7 +17,7 @@ def('roadpath', {
   cat: 'Cenário', label: 'Estrada com curvas', icon: '🛣️',
   params: [P('lanes', 'Faixas', 'int', 2, { min: 1, max: 8, step: 1 }), P('laneW', 'Largura da faixa (m)', 'num', 3.5, { min: 2.5, max: 4.5, step: .1 }), P('shoulder', 'Acostamento (m)', 'num', 2.5, { min: 0, max: 4, step: .1 }),
     P('sidewalk', 'Calçada', 'bool', false), P('guard', 'Guard-rail', 'bool', false), P('center', 'Linha central', 'select', 'double', { opts: [['double', 'Dupla amarela'], ['dash', 'Tracejada'], ['none', 'Nenhuma']] }),
-    P('closed', 'Fechada (circuito)', 'bool', false), P('bridge', 'Pilares acima de 3 m', 'bool', true), P('asphalt', 'Asfalto', 'color', '#3a3c40')],
+    P('delin', 'Balizadores (a cada 20 m)', 'bool', false), P('closed', 'Fechada (circuito)', 'bool', false), P('bridge', 'Pilares acima de 3 m', 'bool', true), P('asphalt', 'Asfalto', 'color', '#3a3c40')],
   build(p) { const g = new THREE.Group(); buildRoadPath(p, g); return g; },
 });
 function roadPts(p) { return Array.isArray(p.pts) && p.pts.length >= 2 ? p.pts : ROAD_PRESETS.s.pts; }
@@ -82,6 +82,10 @@ function buildRoadPath(p, g) {
     const want = (s) => guardAll || isBridge(s);
     let i0 = null; for (let i = 0; i < S.length; i++) { const w = want(S[i]); if (w && i0 === null) i0 = i; if ((!w || i === S.length - 1) && i0 !== null) { const a = i0, b = Math.max(i0 + 1, i); strip(gm, () => [off, yG + 0.5], () => [off, yG + 0.8], a, b, false); strip(gm, () => [-off, yG + 0.8], () => [-off, yG + 0.5], a, b, false); strip(gm, () => [off, yG + 0.8], () => [off, yG + 0.5], a, b, false); strip(gm, () => [-off, yG + 0.5], () => [-off, yG + 0.8], a, b, false); i0 = null; } }
     let nx = 0; for (const s of S) if (want(s) && s.s >= nx) { nx = s.s + 4; for (const sx of [-1, 1]) box(0.1, 0.8, 0.1, gm, s.x + s.rx * sx * (off + 0.05), s.y + yG + 0.4, s.z + s.rz * sx * (off + 0.05), g); }
+  }
+  if (p.delin) { // balizadores brancos com refletor: dão parallax e leitura de velocidade
+    const wm = roadMat('#e9e9e6', { r: .7 }), rm = roadMat('#e2a33a', { r: .4 }), off = E + 0.6; let nx = 0;
+    for (const s of S) if (s.s >= nx) { nx = s.s + 20; for (const sx of [-1, 1]) { const x = s.x + s.rx * sx * off, z = s.z + s.rz * sx * off, y = s.y + (p.sidewalk ? 0.15 : 0); box(0.1, 1.0, 0.1, wm, x, y + 0.5, z, g); box(0.11, 0.12, 0.11, rm, x, y + 0.82, z, g); } }
   }
   g.userData.road = { S, len, hw, E, bridgeH: p.bridge ? 3 : 1e9 };
   return g;
