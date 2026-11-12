@@ -15,7 +15,7 @@ const ROAD_PRESETS = {
 };
 def('roadpath', {
   cat: 'Cenário', label: 'Estrada com curvas', icon: '🛣️',
-  params: [P('lanes', 'Faixas', 'int', 2, { min: 1, max: 8, step: 1 }), P('laneW', 'Largura da faixa (m)', 'num', 3.5, { min: 2.5, max: 4.5, step: .1 }), P('shoulder', 'Acostamento (m)', 'num', 1.5, { min: 0, max: 4, step: .1 }),
+  params: [P('lanes', 'Faixas', 'int', 2, { min: 1, max: 8, step: 1 }), P('laneW', 'Largura da faixa (m)', 'num', 3.5, { min: 2.5, max: 4.5, step: .1 }), P('shoulder', 'Acostamento (m)', 'num', 2.5, { min: 0, max: 4, step: .1 }),
     P('sidewalk', 'Calçada', 'bool', false), P('guard', 'Guard-rail', 'bool', false), P('center', 'Linha central', 'select', 'double', { opts: [['double', 'Dupla amarela'], ['dash', 'Tracejada'], ['none', 'Nenhuma']] }),
     P('closed', 'Fechada (circuito)', 'bool', false), P('bridge', 'Pilares acima de 3 m', 'bool', true), P('asphalt', 'Asfalto', 'color', '#3a3c40')],
   build(p) { const g = new THREE.Group(); buildRoadPath(p, g); return g; },
@@ -46,17 +46,17 @@ function buildRoadPath(p, g) {
     const m = mesh(geo, mat, 0, 0, 0, g); m.castShadow = false; m.receiveShadow = true; if (poly) { m.material.polygonOffset = true; } return m;
   };
   const both = (mat, a, b, y = lift, from, to) => { strip(mat, () => [a, y], () => [b, y], from, to); strip(mat, () => [-b, y], () => [-a, y], from, to); };
-  const dashed = (mat, a, b, y, dash = 3, gap = 9) => { let i0 = null; for (let i = 0; i < S.length; i++) { const on = (S[i].s % (dash + gap)) < dash; if (on && i0 === null) i0 = i; if ((!on || i === S.length - 1) && i0 !== null) { strip(mat, () => [a, y], () => [b, y], i0, Math.max(i0 + 1, i)); i0 = null; } } };
+  const dashed = (mat, a, b, y, dash = 4, gap = 12) => { let i0 = null; for (let i = 0; i < S.length; i++) { const on = (S[i].s % (dash + gap)) < dash; if (on && i0 === null) i0 = i; if ((!on || i === S.length - 1) && i0 !== null) { strip(mat, () => [a, y], () => [b, y], i0, Math.max(i0 + 1, i)); i0 = null; } } };
   const asphalt = roadMat(p.asphalt || '#3a3c40'), white = roadMat('#e8e6e1', { r: .8 }), yel = roadMat('#e0b030', { r: .8 }), shoulderM = roadMat('#55575b'), dirt = roadMat('#7b7364'), conc = roadMat('#a7a49d', { r: .9 }), curb = roadMat('#c7c4bd', { r: .9 });
   strip(asphalt, () => [-hw, lift], () => [hw, lift]);
   if (sh > 0) both(shoulderM, hw, hw + sh, lift - 0.005);
   // pintura
-  both(white, hw - 0.3, hw - 0.15, lift + 0.006);
+  both(white, hw - 0.15, hw, lift + 0.006); // linha de bordo 0,15 m (CONTRAN, ≥80 km/h) no limite da faixa de rolamento
   for (let i = 1; i < p.lanes; i++) {
     const x = -hw + i * p.laneW, center = p.lanes % 2 === 0 && i === p.lanes / 2;
-    if (center && p.center === 'double') { strip(yel, () => [x - 0.2, lift + 0.006], () => [x - 0.08, lift + 0.006]); strip(yel, () => [x + 0.08, lift + 0.006], () => [x + 0.2, lift + 0.006]); }
+    if (center && p.center === 'double') { strip(yel, () => [x - 0.21, lift + 0.006], () => [x - 0.06, lift + 0.006]); strip(yel, () => [x + 0.06, lift + 0.006], () => [x + 0.21, lift + 0.006]); } // dupla: 0,15 m cada, 0,12 m entre elas
     else if (center && p.center === 'none') { }
-    else dashed(center ? yel : white, x - 0.06, x + 0.06, lift + 0.006);
+    else dashed(center ? yel : white, x - 0.075, x + 0.075, lift + 0.006);
   }
   if (p.lanes === 1 && p.center !== 'none') dashed(yel, -0.06, 0.06, lift + 0.006);
   // calçada com meio-fio

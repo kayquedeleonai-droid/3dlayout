@@ -51,6 +51,14 @@ const CAR_STYLES = {
     glass: [[-1.85, 0.89], [-0.65, 1.22], [0.1, 1.23], [1.05, 0.80]] },
 };
 function buildCar(p) {
+  if (typeof buildCarLoft === 'function') { // basemesh contínuo com as medidas exatas (comprimento/largura/altura de carroceria)
+    const L = p.length, W = p.width, H = p.height, body = p.style === 'suv' ? 'suv' : p.style === 'sport' ? 'fastback' : 'sedan';
+    const wb = L * (p.style === 'suv' ? 0.585 : p.style === 'sport' ? 0.57 : 0.585), r = p.style === 'suv' ? 0.37 : 0.33;
+    return buildCarLoft({ model: '', body, color: p.color, length: L, width: W, height: H, wheelbase: wb, foverhang: (L - wb) * (p.style === 'sport' ? 0.47 : 0.44), trackF: W * 0.86, trackR: W * 0.86, clearance: p.style === 'suv' ? 0.2 : p.style === 'sport' ? 0.11 : 0.14, tireF: p.style === 'suv' ? '235/60R18' : p.style === 'sport' ? '245/35R20' : '225/45R17', tireR: p.style === 'suv' ? '235/60R18' : p.style === 'sport' ? '285/30R20' : '225/45R17' });
+  }
+  return buildCarOld(p);
+}
+function buildCarOld(p) {
   const g = new THREE.Group(), rig = { wheels: [], steer: [] };
   const S = CAR_STYLES[p.style] || CAR_STYLES.sedan, L = p.length, W = p.width, H = p.height;
   const sz = L / S.L, sy = H / S.H, r = S.r * Math.min(1.15, Math.max(0.85, sy)), ra = r + 0.05;
@@ -196,7 +204,7 @@ function buildPerson(p) {
   // pescoço e cabeça
   const neckR = H * (fem ? 0.024 : 0.028) * (1 + kid * 0.15);
   lathe([[tL * 0.98, neckR * 1.15], [tL + H * 0.035, neckR], [tL + H * 0.06, neckR * 0.95]], skin, torso, 0.95, 10);
-  const head = grp(0, tL + H * 0.045 + headH * 0.5, 0, torso); rig.head = head;
+  const head = grp(0, H - hipY - H * 0.02 - headH * 0.51 - (p.look === 'mannequin' ? 0 : headH * 0.03), 0, torso); rig.head = head; // topo do crânio = altura real
   const hw = headH * (fem ? 0.36 : 0.38);
   ell(hw, headH * 0.42, headH * 0.47, skin, 0, headH * 0.09, -headH * 0.03, head, 20, 14);          // crânio
   const jaw = ell(hw * (fem ? 0.8 : 0.86), headH * 0.33, headH * 0.36, skin, 0, -headH * 0.15, headH * 0.05, head, 18, 12); // rosto/mandíbula
@@ -291,8 +299,8 @@ def('crowd', {
 const SPECIES = {
   dog: { Hw: .57, L: .75, bd: .3, bw: .25, neck: .22, neckA: .7, head: .24, headDown: .1, snout: .5, tail: .32, tailA: 1.7, ear: 'flop', color: '#b07a3e', walk: 1.2, run: 7, trot: 2.2 },
   cat: { Hw: .25, L: .45, bd: .15, bw: .12, neck: .08, neckA: .7, head: .1, headDown: 0, snout: .25, tail: .32, tailA: 2.5, ear: 'up', color: '#7a7a7a', walk: .8, run: 5, trot: 1.6 },
-  horse: { Hw: 1.6, L: 1.55, bd: .72, bw: .5, neck: .85, neckA: .55, head: .6, headDown: .75, snout: .55, tail: .75, tailA: .4, ear: 'up', color: '#6b4a2b', walk: 1.7, run: 14, trot: 4 },
-  cow: { Hw: 1.4, L: 1.7, bd: .8, bw: .6, neck: .45, neckA: 1.1, head: .5, headDown: .35, snout: .4, tail: .8, tailA: .15, ear: 'side', color: '#e8e6e1', walk: 1.1, run: 6, trot: 2.5 },
+  horse: { Hw: 1.6, L: 1.55, bd: .72, bw: .6, neck: .85, neckA: .55, head: .6, headDown: .75, snout: .55, tail: .75, tailA: .4, ear: 'up', color: '#6b4a2b', walk: 1.7, run: 14, trot: 4 },
+  cow: { Hw: 1.4, L: 1.7, bd: .8, bw: .72, neck: .45, neckA: 1.1, head: .5, headDown: .35, snout: .4, tail: .8, tailA: .15, ear: 'side', color: '#e8e6e1', walk: 1.1, run: 6, trot: 2.5 },
   deer: { Hw: 1.0, L: 1.0, bd: .4, bw: .28, neck: .45, neckA: .45, head: .3, headDown: .3, snout: .45, tail: .12, tailA: 2.3, ear: 'up', color: '#9a6a3c', walk: 1.4, run: 13, trot: 3.5 },
 };
 function buildQuad(p) {
@@ -441,9 +449,11 @@ function buildRoad(p, g) {
   const W = p.lanes * 3.5, L = p.length;
   box(W, 0.04, L, M('#3a3c40', { r: .95 }), 0, 0.02, 0, g).castShadow = false;
   const white = M('#e8e6e1', { r: .8 }), yel = M('#e0b030', { r: .8 });
-  for (const sx of [-1, 1]) box(0.15, 0.01, L, white, sx * (W / 2 - 0.3), 0.045, 0, g).castShadow = false;
-  for (let i = 1; i < p.lanes; i++) { const x = -W / 2 + i * 3.5, center = i === p.lanes / 2; if (center && p.lanes > 1) { box(0.12, 0.01, L, yel, x - 0.12, 0.046, 0, g).castShadow = false; box(0.12, 0.01, L, yel, x + 0.12, 0.046, 0, g).castShadow = false; } else for (let z = -L / 2 + 1.5; z < L / 2; z += 9) box(0.12, 0.01, 3, white, x, 0.046, z + 1.5, g).castShadow = false; }
-  if (p.sidewalk) for (const sx of [-1, 1]) { box(4, 0.16, L, M('#a7a49d'), sx * (W / 2 + 2), 0.08, 0, g); box(0.2, 0.18, L, M('#c7c4bd'), sx * (W / 2 + 0.1), 0.09, 0, g); }
+  // CONTRAN MBST vol. IV: linha de bordo 0,10 m (<80 km/h) / 0,15 m (≥80) a 0,10–0,20 m da borda; tracejado 2/4 m (<60) ou 4/12 m (≥80)
+  const lw = p.urban ? 0.10 : 0.15, dash = p.urban ? 2 : 4, gap = p.urban ? 4 : 12;
+  for (const sx of [-1, 1]) box(lw, 0.01, L, white, sx * (W / 2 - 0.15 - lw / 2), 0.045, 0, g).castShadow = false;
+  for (let i = 1; i < p.lanes; i++) { const x = -W / 2 + i * 3.5, center = i === p.lanes / 2; if (center && p.lanes > 1) { box(0.12, 0.01, L, yel, x - 0.12, 0.046, 0, g).castShadow = false; box(0.12, 0.01, L, yel, x + 0.12, 0.046, 0, g).castShadow = false; } else for (let z = -L / 2; z + dash <= L / 2; z += dash + gap) box(lw, 0.01, dash, white, x, 0.046, z + dash / 2, g).castShadow = false; }
+  if (p.sidewalk) for (const sx of [-1, 1]) { box(4, 0.15, L, M('#a7a49d'), sx * (W / 2 + 2), 0.075, 0, g); box(0.15, 0.15, L, M('#c7c4bd'), sx * (W / 2 + 0.075), 0.075, 0, g); }
   return W;
 }
 def('road', { cat: 'Cenário', label: 'Estrada', icon: '🛣️', params: [P('length', 'Comprimento', 'num', 200, { min: 10, max: 2000, step: 10 }), P('lanes', 'Faixas', 'int', 2, { min: 1, max: 8, step: 1 }), P('sidewalk', 'Calçada', 'bool', false)], build(p) { const g = new THREE.Group(); buildRoad(p, g); return g; } });
@@ -452,7 +462,7 @@ def('street', {
   cat: 'Cenário', label: 'Rua com prédios', icon: '🏙️',
   params: [P('length', 'Comprimento', 'num', 160, { min: 20, max: 800, step: 10 }), P('lanes', 'Faixas', 'int', 2, { min: 1, max: 6, step: 1 }), P('minF', 'Andares mín', 'int', 3, { min: 1, max: 60, step: 1 }), P('maxF', 'Andares máx', 'int', 16, { min: 1, max: 80, step: 1 }), P('lamps', 'Postes', 'bool', true), P('trees', 'Árvores', 'bool', true), P('seed', 'Semente', 'int', 12, { min: 1, max: 9999, step: 1 })],
   build(p) {
-    const g = new THREE.Group(), r = mulberry(p.seed), W = buildRoad({ ...p, sidewalk: true }, g), cols = ['#b8b2a6', '#d6d0c4', '#8a8f96', '#c9b49a', '#9a9387', '#e0dcd2', '#6e737a'];
+    const g = new THREE.Group(), r = mulberry(p.seed), W = buildRoad({ ...p, sidewalk: true, urban: true }, g), cols = ['#b8b2a6', '#d6d0c4', '#8a8f96', '#c9b49a', '#9a9387', '#e0dcd2', '#6e737a'];
     for (const sx of [-1, 1]) {
       let z = -p.length / 2;
       while (z < p.length / 2 - 4) { const w = 8 + r() * 14, d = 10 + r() * 12; buildBuilding({ width: d, depth: Math.min(w, p.length / 2 - z), floors: (p.minF + r() * (p.maxF - p.minF + 1)) | 0, floorH: 3.2, color: cols[(r() * cols.length) | 0], glass: r() < .5 ? '#2a3746' : '#3a4450', style: r() < .5 ? 'faixas' : 'grade' }, g, sx * (W / 2 + 4 + d / 2 + 0.5), z + Math.min(w, p.length / 2 - z) / 2); z += w + 0.3; }
