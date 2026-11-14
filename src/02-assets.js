@@ -244,7 +244,9 @@ function buildPerson(p) {
     box(fw * 0.95, ankH * 0.22, fl * 0.95, shoe, 0, -ankH * 0.9, fl * 0.27, ankle);                          // sola
     rig.legs.push({ h: hipJ, k: knee, a: ankle, side: sx });
   }
-  rig.H = H; g.userData.rig = rig; mergeStatic(g); return g;
+  rig.H = H; rig.fArm = fArm; rig.hand = hand; rig.ankH = ankH; rig.footL = H * 0.15; g.userData.rig = rig; mergeStatic(g);
+  if (p.look === 'real' && !p._thumb) attachHuman(g, p);
+  return g;
 }
 function animPerson(rig, c, p, phaseOff = 0) {
   const H = rig.H, sp = Math.abs(c.speed);
@@ -283,8 +285,9 @@ function animPerson(rig, c, p, phaseOff = 0) {
       const A = rig.arms[1]; A.s.rotation.set(-1.5, 0, 0); A.e.rotation.set(-0.05, 0, 0);
     }
   }
+  if (rig.real || rig.realPending) retargetHuman(rig);
 }
-const personParams = (h, shirt, pants, skin) => [P('look', 'Visual', 'select', 'bot', { opts: [['bot', 'Bot (estilo Mixamo)'], ['mannequin', 'Manequim de madeira'], ['clothes', 'Roupas']] }), P('height', 'Altura (m)', 'num', h, { min: 0.8, max: 2.2, step: .01 }), P('build', 'Porte', 'num', 0.5, { min: 0, max: 1, step: .05 }), P('shirt', 'Camisa', 'color', shirt), P('pants', 'Calça', 'color', pants), P('skin', 'Pele', 'color', skin), P('hair', 'Cabelo', 'color', '#2a1d14'), P('sex', 'Corpo', 'select', 'm', { opts: [['m', 'Masculino'], ['f', 'Feminino']] }), P('sleeves', 'Mangas', 'select', 'long', { opts: [['long', 'Compridas'], ['short', 'Curtas']] }), P('pose', 'Pose parado', 'select', 'stand', { opts: [['stand', 'Em pé'], ['sit', 'Sentado'], ['drive', 'Dirigindo (banco do carro)'], ['wave', 'Acenando'], ['phone', 'Ao telefone'], ['cross', 'Braços cruzados'], ['point', 'Apontando']] }), P('walk', 'Vel. andar (m/s)', 'num', 1.4, { min: .3, max: 3, step: .1 }), P('run', 'Vel. correr (m/s)', 'num', 4.5, { min: 2, max: 10, step: .1 })];
+const personParams = (h, shirt, pants, skin) => [P('look', 'Visual', 'select', 'real', { opts: [['real', 'Humano realista (base mesh)'], ['bot', 'Bot (estilo Mixamo)'], ['mannequin', 'Manequim de madeira'], ['clothes', 'Roupas']] }), P('skinMat', 'Acabamento (realista)', 'select', 'tex', { opts: [['tex', 'Pele com textura'], ['clay', 'Neutro cinza (manequim)']] }), P('height', 'Altura (m)', 'num', h, { min: 0.8, max: 2.2, step: .01 }), P('build', 'Porte', 'num', 0.5, { min: 0, max: 1, step: .05 }), P('shirt', 'Camisa', 'color', shirt), P('pants', 'Calça', 'color', pants), P('skin', 'Pele', 'color', skin), P('hair', 'Cabelo', 'color', '#2a1d14'), P('sex', 'Corpo', 'select', 'm', { opts: [['m', 'Masculino'], ['f', 'Feminino']] }), P('sleeves', 'Mangas', 'select', 'long', { opts: [['long', 'Compridas'], ['short', 'Curtas']] }), P('pose', 'Pose parado', 'select', 'stand', { opts: [['stand', 'Em pé'], ['sit', 'Sentado'], ['drive', 'Dirigindo (banco do carro)'], ['wave', 'Acenando'], ['phone', 'Ao telefone'], ['cross', 'Braços cruzados'], ['point', 'Apontando']] }), P('walk', 'Vel. andar (m/s)', 'num', 1.4, { min: .3, max: 3, step: .1 }), P('run', 'Vel. correr (m/s)', 'num', 4.5, { min: 2, max: 10, step: .1 })];
 def('person', { cat: 'Pessoas', label: 'Pessoa', icon: '🧍', pilot: 'walker', params: personParams(1.75, '#2f6db5', '#3a3d45', '#d9a07a'), build: buildPerson, anim: animPerson });
 def('woman', { cat: 'Pessoas', label: 'Mulher', icon: '🧍‍♀️', pilot: 'walker', params: personParams(1.65, '#c94b3c', '#24262b', '#f1c7a6').map(x => x.k === 'sex' ? { ...x, def: 'f' } : x.k === 'build' ? { ...x, def: 0.2 } : x.k === 'hair' ? { ...x, def: '#6b3f1f' } : x), build: buildPerson, anim: animPerson });
 def('child', { cat: 'Pessoas', label: 'Criança', icon: '🧒', pilot: 'walker', params: personParams(1.15, '#d9a441', '#2f6db5', '#d9a07a').map(x => x.k === 'build' ? { ...x, def: 0.3 } : x.k === 'walk' ? { ...x, def: 1.1 } : x), build: buildPerson, anim: animPerson });

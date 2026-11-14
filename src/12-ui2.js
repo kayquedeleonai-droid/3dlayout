@@ -85,7 +85,7 @@ function pumpThumbs() {
   }
 }
 const idleCtx = { t: 0.4, dist: 0, speed: 0, yawRate: 0, vy: 0, y: 0 };
-function assetThumb(type, params) { return () => { const d = ASSETS[type], p = Object.assign(defaultParams(type), params || {}); const g = d.build(p); if (d.anim && g.userData.rig) d.anim(g.userData.rig, { ...idleCtx, y: d.pilot === 'bird' ? 2 : 0, speed: d.pilot === 'bird' ? 5 : 0 }, p); return snapThumb(g); }; }
+function assetThumb(type, params) { return () => { const d = ASSETS[type], p = Object.assign(defaultParams(type), params || {}, { _thumb: true }); const g = d.build(p); if (d.anim && g.userData.rig) d.anim(g.userData.rig, { ...idleCtx, y: d.pilot === 'bird' ? 2 : 0, speed: d.pilot === 'bird' ? 5 : 0 }, p); return snapThumb(g); }; }
 function mannequin() { const p = Object.assign(defaultParams('person'), { look: 'mannequin', pose: 'stand' }); const g = buildPerson(p); animPerson(g.userData.rig, idleCtx, p); return { g, p }; }
 function poseThumb(kind) {
   return () => {

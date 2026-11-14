@@ -8,15 +8,13 @@
 const COMM_ROAD = [[0, 0, -1700], [0, 0, -1100], [0, 0, -420], [0, 0, -180], [30, 0, -20], [130, 1, 110], [280, 1.5, 175], [430, 2.5, 190], [540, 6.5, 170], [640, 7, 130], [740, 6.5, 80], [840, 2.5, 20], [930, 1, -70], [990, 0.5, -190], [1010, 0, -330], [1010, 0, -620], [1010, 0, -1200], [1010, 0, -1700]]; // reta continua até sumir no horizonte nos dois sentidos
 // senta uma pessoa no banco do motorista com base nas dimensões REAIS do carro (H-point, bitola, entre-eixos, altura do teto)
 function seatInCar(person, car) {
-  const cp = car.params || {}, Hc = +cp.height || 1.45, Wc = +cp.width || 1.8, Lc = +cp.length || 4.5, wb = +cp.wheelbase || Lc * 0.6, fo = +cp.foverhang || Lc * 0.2;
-  const pp = person.params, H = +pp.height || 1.75, hipY = H * 0.52;
-  const hp = clamp(0.31 + (Hc - 1.3) * 0.85, 0.28, 0.8); // H-point acima do solo: 911 ≈ 0,31 m · sedã ≈ 0,45 · SUV ≈ 0,7
-  let rec = 0.3; const top = (r) => hp + (H - hipY) * Math.cos(r) + 0.02;
-  while (top(rec) > Hc - 0.06 && rec < 0.55) rec += 0.05; // pessoa alta em carro baixo: reclina o banco como na vida real
+  const cp = car.params || {}, C = carCabin(cp), pp = person.params, H = +pp.height || 1.75, hipY = H * 0.52;
+  let rec = 0.3; const top = (r) => C.hp + (H - hipY) * Math.cos(r) + 0.02;
+  while (top(rec) > C.H - 0.06 && rec < 0.55) rec += 0.05; // pessoa alta em carro baixo: reclina o banco como na vida real
   pp.pose = 'drive'; pp.recline = +rec.toFixed(2);
   person.cons.mount = car.id; person.cons.ground = false; person.tracks = person.tracks || {}; delete person.tracks.px; delete person.tracks.py; delete person.tracks.pz;
-  Object.assign(person.base, { px: Wc / 2 - 0.55, py: hp - hipY * 0.22, pz: (Lc / 2 - fo) - 0.55 * wb, rx: 0, ry: 0, rz: 0 });
-  return { headroom: Hc - top(rec), recline: rec };
+  Object.assign(person.base, { px: C.xd, py: C.hp - hipY * 0.22, pz: C.zh, rx: 0, ry: 0, rz: 0 });
+  return { headroom: C.H - top(rec), recline: rec };
 }
 function commScene() {
   const P = newProject(); P.name = 'Comercial esportivo — 911 na rodovia'; P.fps = 24; P.duration = 719; P.aspect = '2.39:1';
@@ -40,7 +38,7 @@ function commScene() {
   { // o carro larga no mesmo ponto de antes (0,0,-420); a estrada só continua para trás até o horizonte
     const { S, len } = sampleRoad(road.params); let best = 0, bd = 1e9; for (const q of S) { const d = q.x * q.x + (q.z + 420) ** 2; if (d < bd) { bd = d; best = q.s; } }
     roadFollow(road, car, 260, 1, 1, best / len * 100, 0, true); }
-  const drv = add('person', { name: 'Piloto', params: Object.assign(defaultParams('person'), { look: 'clothes', height: 1.78, shirt: '#1d1e22', pants: '#1d1e22', pose: 'drive' }) });
+  const drv = add('person', { name: 'Piloto', params: Object.assign(defaultParams('person'), { look: 'real', height: 1.78, shirt: '#1d1e22', pants: '#1d1e22', pose: 'drive' }) });
   seatInCar(drv, car); buildRuntime(drv);
   car.speedProf = realisticProfile(car, { vMax: 215, v0: 170, aLat: 1.05, aAcc: 0.55, aBrk: 1.0 }); applySpeedProfile(car);
   return { road, car };

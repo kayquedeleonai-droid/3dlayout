@@ -117,9 +117,9 @@ function pchip(pts) {
 const _carMats = {};
 function carMats(color) {
   const k = color; if (_carMats[k]) return _carMats[k];
-  const body = new THREE.MeshStandardMaterial({ color, roughness: .42, metalness: .15, side: THREE.DoubleSide });
+  const body = new THREE.MeshStandardMaterial({ color, roughness: .42, metalness: .15 });
   const glass = new THREE.MeshStandardMaterial({ color: '#1d252e', roughness: .12, metalness: .3, transparent: true, opacity: .62, depthWrite: false, side: THREE.DoubleSide });
-  const trim = new THREE.MeshStandardMaterial({ color: '#141518', roughness: .75, metalness: 0, side: THREE.DoubleSide });
+  const trim = new THREE.MeshStandardMaterial({ color: '#141518', roughness: .75, metalness: 0 });
   const hl = new THREE.MeshStandardMaterial({ color: '#e9eef2', roughness: .2, emissive: '#cfd8e0', emissiveIntensity: .35 });
   const tl = new THREE.MeshStandardMaterial({ color: '#8e1414', roughness: .3, emissive: '#5a0606', emissiveIntensity: .6, side: THREE.DoubleSide }); hl.side = THREE.DoubleSide;
   const clad = new THREE.MeshStandardMaterial({ color: '#2a2b2e', roughness: .85 });
@@ -327,5 +327,40 @@ function buildCarLoft(p) {
       rig.wheels.push(w); if (front2) rig.steer.push(piv);
     }
   }
+  buildCarInterior(g, p, geo, mats, { W, H, L, wb, zfa, clr });
   g.userData.rig = rig; return g;
+}
+// posição do motorista a partir das medidas reais (usado pelo interior e pelo seatInCar)
+function carCabin(p) {
+  const L = +p.length || 4.5, W = +p.width || 1.8, H = +p.height || 1.45, wb = Math.min(+p.wheelbase || L * 0.6, L * 0.9);
+  const fo = clamp(+p.foverhang || (L - wb) * 0.45, 0.2, L - wb - 0.2), zfa = L / 2 - fo;
+  const hp = clamp(0.31 + (H - 1.3) * 0.85, 0.28, 0.8); // H-point: 911 ≈ 0,31 m · sedã ≈ 0,44 · SUV ≈ 0,70
+  return { L, W, H, wb, zfa, hp, xd: W / 2 - 0.55, zh: zfa - 0.55 * wb };
+}
+const _intMats = { shell: new THREE.MeshStandardMaterial({ color: '#2a2b2f', roughness: .92, side: THREE.BackSide }), hide: new THREE.MeshBasicMaterial({ visible: false }), seat: new THREE.MeshStandardMaterial({ color: '#1c1d21', roughness: .8 }), dash: new THREE.MeshStandardMaterial({ color: '#232428', roughness: .7 }), floor: new THREE.MeshStandardMaterial({ color: '#18191b', roughness: .95 }), wheel: new THREE.MeshStandardMaterial({ color: '#111214', roughness: .5 }), gauge: new THREE.MeshStandardMaterial({ color: '#0d0f12', roughness: .2, emissive: '#2a3a4a', emissiveIntensity: .5 }) };
+function buildCarInterior(g, p, geo, mats, D) {
+  // forro interno: a própria carroceria vista por dentro (escura); vidros continuam transparentes
+  const shell = new THREE.Mesh(geo, mats.map((m, i) => i === 1 ? _intMats.hide : _intMats.shell)); shell.receiveShadow = true; g.add(shell);
+  const C = carCabin(p), I = new THREE.Group(); I.name = 'interior'; g.add(I);
+  const { hp, xd, zh } = C, W = D.W, floorY = Math.max(D.clr + 0.1, hp - 0.2);
+  const add = (w, h, d, m, x, y, z, rx = 0) => { const b = box(w, h, d, m, x, y, z, I); b.rotation.x = rx; b.castShadow = false; return b; };
+  add(W - 0.32, 0.04, D.wb * 0.78, _intMats.floor, 0, floorY, zh + 0.15);                       // assoalho
+  for (const sx of [-1, 1]) {                                                                   // bancos dianteiros (concha)
+    add(0.5, 0.11, 0.5, _intMats.seat, sx * xd, hp - 0.075, zh + 0.12);
+    add(0.5, 0.62, 0.12, _intMats.seat, sx * xd, hp + 0.27, zh - 0.2, -0.3);
+    add(0.26, 0.17, 0.09, _intMats.seat, sx * xd, hp + 0.66, zh - 0.33, -0.3);
+    for (const bx of [-1, 1]) add(0.07, 0.16, 0.48, _intMats.seat, sx * xd + bx * 0.25, hp + 0.0, zh + 0.1); // abas laterais
+  }
+  if (D.wb > 2.4 && D.H > 1.27) { const zb = zh - 0.85; add(W - 0.5, 0.1, 0.42, _intMats.seat, 0, hp + 0.02, zb); add(W - 0.5, 0.5, 0.1, _intMats.seat, 0, hp + 0.3, zb - 0.22, -0.22); } // banco traseiro
+  const dy = Math.min(hp + 0.4, D.H - 0.42);
+  add(W - 0.2, 0.2, 0.5, _intMats.dash, 0, dy, zh + 0.95);                                       // painel
+  add(0.42, 0.13, 0.08, _intMats.gauge, xd, dy + 0.08, zh + 0.72, 0.3);                          // quadro de instrumentos
+  add(0.22, Math.max(0.1, dy - floorY - 0.1), 0.75, _intMats.dash, 0, (dy + floorY) / 2 - 0.05, zh + 0.4); // console central
+  // volante (aro Ø 0,37 m) + coluna, à frente do motorista
+  const wz = zh + 0.56, wy = hp + 0.4, tilt = 0.42;
+  const rim = mesh(new THREE.TorusGeometry(0.185, 0.017, 8, 32), _intMats.wheel, xd, wy, wz, I); rim.rotation.x = tilt; rim.castShadow = false;
+  const hub = mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.05, 16), _intMats.wheel, xd, wy, wz, I); hub.rotation.x = Math.PI / 2 + tilt;
+  for (const a of [0, 2.1, 4.2]) { const sp = box(0.03, 0.17, 0.015, _intMats.wheel, 0, 0, 0, null); sp.geometry.translate(0, -0.09, 0); sp.rotation.z = a; const sg = new THREE.Group(); sg.position.set(xd, wy, wz); sg.rotation.x = tilt; sg.add(sp); I.add(sg); }
+  const col = mesh(new THREE.CylinderGeometry(0.03, 0.035, 0.42, 10), _intMats.wheel, xd, wy + 0.08 * Math.cos(tilt), wz + 0.21, I); col.rotation.x = Math.PI / 2 + tilt;
+  I.traverse(n => { if (n.isMesh) n.userData.interior = true; });
 }

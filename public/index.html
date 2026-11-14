@@ -801,7 +801,9 @@ function buildPerson(p) {
     box(fw * 0.95, ankH * 0.22, fl * 0.95, shoe, 0, -ankH * 0.9, fl * 0.27, ankle);                          // sola
     rig.legs.push({ h: hipJ, k: knee, a: ankle, side: sx });
   }
-  rig.H = H; g.userData.rig = rig; mergeStatic(g); return g;
+  rig.H = H; rig.fArm = fArm; rig.hand = hand; rig.ankH = ankH; rig.footL = H * 0.15; g.userData.rig = rig; mergeStatic(g);
+  if (p.look === 'real' && !p._thumb) attachHuman(g, p);
+  return g;
 }
 function animPerson(rig, c, p, phaseOff = 0) {
   const H = rig.H, sp = Math.abs(c.speed);
@@ -840,8 +842,9 @@ function animPerson(rig, c, p, phaseOff = 0) {
       const A = rig.arms[1]; A.s.rotation.set(-1.5, 0, 0); A.e.rotation.set(-0.05, 0, 0);
     }
   }
+  if (rig.real || rig.realPending) retargetHuman(rig);
 }
-const personParams = (h, shirt, pants, skin) => [P('look', 'Visual', 'select', 'bot', { opts: [['bot', 'Bot (estilo Mixamo)'], ['mannequin', 'Manequim de madeira'], ['clothes', 'Roupas']] }), P('height', 'Altura (m)', 'num', h, { min: 0.8, max: 2.2, step: .01 }), P('build', 'Porte', 'num', 0.5, { min: 0, max: 1, step: .05 }), P('shirt', 'Camisa', 'color', shirt), P('pants', 'Calça', 'color', pants), P('skin', 'Pele', 'color', skin), P('hair', 'Cabelo', 'color', '#2a1d14'), P('sex', 'Corpo', 'select', 'm', { opts: [['m', 'Masculino'], ['f', 'Feminino']] }), P('sleeves', 'Mangas', 'select', 'long', { opts: [['long', 'Compridas'], ['short', 'Curtas']] }), P('pose', 'Pose parado', 'select', 'stand', { opts: [['stand', 'Em pé'], ['sit', 'Sentado'], ['drive', 'Dirigindo (banco do carro)'], ['wave', 'Acenando'], ['phone', 'Ao telefone'], ['cross', 'Braços cruzados'], ['point', 'Apontando']] }), P('walk', 'Vel. andar (m/s)', 'num', 1.4, { min: .3, max: 3, step: .1 }), P('run', 'Vel. correr (m/s)', 'num', 4.5, { min: 2, max: 10, step: .1 })];
+const personParams = (h, shirt, pants, skin) => [P('look', 'Visual', 'select', 'real', { opts: [['real', 'Humano realista (base mesh)'], ['bot', 'Bot (estilo Mixamo)'], ['mannequin', 'Manequim de madeira'], ['clothes', 'Roupas']] }), P('skinMat', 'Acabamento (realista)', 'select', 'tex', { opts: [['tex', 'Pele com textura'], ['clay', 'Neutro cinza (manequim)']] }), P('height', 'Altura (m)', 'num', h, { min: 0.8, max: 2.2, step: .01 }), P('build', 'Porte', 'num', 0.5, { min: 0, max: 1, step: .05 }), P('shirt', 'Camisa', 'color', shirt), P('pants', 'Calça', 'color', pants), P('skin', 'Pele', 'color', skin), P('hair', 'Cabelo', 'color', '#2a1d14'), P('sex', 'Corpo', 'select', 'm', { opts: [['m', 'Masculino'], ['f', 'Feminino']] }), P('sleeves', 'Mangas', 'select', 'long', { opts: [['long', 'Compridas'], ['short', 'Curtas']] }), P('pose', 'Pose parado', 'select', 'stand', { opts: [['stand', 'Em pé'], ['sit', 'Sentado'], ['drive', 'Dirigindo (banco do carro)'], ['wave', 'Acenando'], ['phone', 'Ao telefone'], ['cross', 'Braços cruzados'], ['point', 'Apontando']] }), P('walk', 'Vel. andar (m/s)', 'num', 1.4, { min: .3, max: 3, step: .1 }), P('run', 'Vel. correr (m/s)', 'num', 4.5, { min: 2, max: 10, step: .1 })];
 def('person', { cat: 'Pessoas', label: 'Pessoa', icon: '🧍', pilot: 'walker', params: personParams(1.75, '#2f6db5', '#3a3d45', '#d9a07a'), build: buildPerson, anim: animPerson });
 def('woman', { cat: 'Pessoas', label: 'Mulher', icon: '🧍‍♀️', pilot: 'walker', params: personParams(1.65, '#c94b3c', '#24262b', '#f1c7a6').map(x => x.k === 'sex' ? { ...x, def: 'f' } : x.k === 'build' ? { ...x, def: 0.2 } : x.k === 'hair' ? { ...x, def: '#6b3f1f' } : x), build: buildPerson, anim: animPerson });
 def('child', { cat: 'Pessoas', label: 'Criança', icon: '🧒', pilot: 'walker', params: personParams(1.15, '#d9a441', '#2f6db5', '#d9a07a').map(x => x.k === 'build' ? { ...x, def: 0.3 } : x.k === 'walk' ? { ...x, def: 1.1 } : x), build: buildPerson, anim: animPerson });
@@ -1474,9 +1477,9 @@ function pchip(pts) {
 const _carMats = {};
 function carMats(color) {
   const k = color; if (_carMats[k]) return _carMats[k];
-  const body = new THREE.MeshStandardMaterial({ color, roughness: .42, metalness: .15, side: THREE.DoubleSide });
+  const body = new THREE.MeshStandardMaterial({ color, roughness: .42, metalness: .15 });
   const glass = new THREE.MeshStandardMaterial({ color: '#1d252e', roughness: .12, metalness: .3, transparent: true, opacity: .62, depthWrite: false, side: THREE.DoubleSide });
-  const trim = new THREE.MeshStandardMaterial({ color: '#141518', roughness: .75, metalness: 0, side: THREE.DoubleSide });
+  const trim = new THREE.MeshStandardMaterial({ color: '#141518', roughness: .75, metalness: 0 });
   const hl = new THREE.MeshStandardMaterial({ color: '#e9eef2', roughness: .2, emissive: '#cfd8e0', emissiveIntensity: .35 });
   const tl = new THREE.MeshStandardMaterial({ color: '#8e1414', roughness: .3, emissive: '#5a0606', emissiveIntensity: .6, side: THREE.DoubleSide }); hl.side = THREE.DoubleSide;
   const clad = new THREE.MeshStandardMaterial({ color: '#2a2b2e', roughness: .85 });
@@ -1684,7 +1687,42 @@ function buildCarLoft(p) {
       rig.wheels.push(w); if (front2) rig.steer.push(piv);
     }
   }
+  buildCarInterior(g, p, geo, mats, { W, H, L, wb, zfa, clr });
   g.userData.rig = rig; return g;
+}
+// posição do motorista a partir das medidas reais (usado pelo interior e pelo seatInCar)
+function carCabin(p) {
+  const L = +p.length || 4.5, W = +p.width || 1.8, H = +p.height || 1.45, wb = Math.min(+p.wheelbase || L * 0.6, L * 0.9);
+  const fo = clamp(+p.foverhang || (L - wb) * 0.45, 0.2, L - wb - 0.2), zfa = L / 2 - fo;
+  const hp = clamp(0.31 + (H - 1.3) * 0.85, 0.28, 0.8); // H-point: 911 ≈ 0,31 m · sedã ≈ 0,44 · SUV ≈ 0,70
+  return { L, W, H, wb, zfa, hp, xd: W / 2 - 0.55, zh: zfa - 0.55 * wb };
+}
+const _intMats = { shell: new THREE.MeshStandardMaterial({ color: '#2a2b2f', roughness: .92, side: THREE.BackSide }), hide: new THREE.MeshBasicMaterial({ visible: false }), seat: new THREE.MeshStandardMaterial({ color: '#1c1d21', roughness: .8 }), dash: new THREE.MeshStandardMaterial({ color: '#232428', roughness: .7 }), floor: new THREE.MeshStandardMaterial({ color: '#18191b', roughness: .95 }), wheel: new THREE.MeshStandardMaterial({ color: '#111214', roughness: .5 }), gauge: new THREE.MeshStandardMaterial({ color: '#0d0f12', roughness: .2, emissive: '#2a3a4a', emissiveIntensity: .5 }) };
+function buildCarInterior(g, p, geo, mats, D) {
+  // forro interno: a própria carroceria vista por dentro (escura); vidros continuam transparentes
+  const shell = new THREE.Mesh(geo, mats.map((m, i) => i === 1 ? _intMats.hide : _intMats.shell)); shell.receiveShadow = true; g.add(shell);
+  const C = carCabin(p), I = new THREE.Group(); I.name = 'interior'; g.add(I);
+  const { hp, xd, zh } = C, W = D.W, floorY = Math.max(D.clr + 0.1, hp - 0.2);
+  const add = (w, h, d, m, x, y, z, rx = 0) => { const b = box(w, h, d, m, x, y, z, I); b.rotation.x = rx; b.castShadow = false; return b; };
+  add(W - 0.32, 0.04, D.wb * 0.78, _intMats.floor, 0, floorY, zh + 0.15);                       // assoalho
+  for (const sx of [-1, 1]) {                                                                   // bancos dianteiros (concha)
+    add(0.5, 0.11, 0.5, _intMats.seat, sx * xd, hp - 0.075, zh + 0.12);
+    add(0.5, 0.62, 0.12, _intMats.seat, sx * xd, hp + 0.27, zh - 0.2, -0.3);
+    add(0.26, 0.17, 0.09, _intMats.seat, sx * xd, hp + 0.66, zh - 0.33, -0.3);
+    for (const bx of [-1, 1]) add(0.07, 0.16, 0.48, _intMats.seat, sx * xd + bx * 0.25, hp + 0.0, zh + 0.1); // abas laterais
+  }
+  if (D.wb > 2.4 && D.H > 1.27) { const zb = zh - 0.85; add(W - 0.5, 0.1, 0.42, _intMats.seat, 0, hp + 0.02, zb); add(W - 0.5, 0.5, 0.1, _intMats.seat, 0, hp + 0.3, zb - 0.22, -0.22); } // banco traseiro
+  const dy = Math.min(hp + 0.4, D.H - 0.42);
+  add(W - 0.2, 0.2, 0.5, _intMats.dash, 0, dy, zh + 0.95);                                       // painel
+  add(0.42, 0.13, 0.08, _intMats.gauge, xd, dy + 0.08, zh + 0.72, 0.3);                          // quadro de instrumentos
+  add(0.22, Math.max(0.1, dy - floorY - 0.1), 0.75, _intMats.dash, 0, (dy + floorY) / 2 - 0.05, zh + 0.4); // console central
+  // volante (aro Ø 0,37 m) + coluna, à frente do motorista
+  const wz = zh + 0.56, wy = hp + 0.4, tilt = 0.42;
+  const rim = mesh(new THREE.TorusGeometry(0.185, 0.017, 8, 32), _intMats.wheel, xd, wy, wz, I); rim.rotation.x = tilt; rim.castShadow = false;
+  const hub = mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.05, 16), _intMats.wheel, xd, wy, wz, I); hub.rotation.x = Math.PI / 2 + tilt;
+  for (const a of [0, 2.1, 4.2]) { const sp = box(0.03, 0.17, 0.015, _intMats.wheel, 0, 0, 0, null); sp.geometry.translate(0, -0.09, 0); sp.rotation.z = a; const sg = new THREE.Group(); sg.position.set(xd, wy, wz); sg.rotation.x = tilt; sg.add(sp); I.add(sg); }
+  const col = mesh(new THREE.CylinderGeometry(0.03, 0.035, 0.42, 10), _intMats.wheel, xd, wy + 0.08 * Math.cos(tilt), wz + 0.21, I); col.rotation.x = Math.PI / 2 + tilt;
+  I.traverse(n => { if (n.isMesh) n.userData.interior = true; });
 }
 
 /* ============================================================
@@ -4211,7 +4249,7 @@ function pumpThumbs() {
   }
 }
 const idleCtx = { t: 0.4, dist: 0, speed: 0, yawRate: 0, vy: 0, y: 0 };
-function assetThumb(type, params) { return () => { const d = ASSETS[type], p = Object.assign(defaultParams(type), params || {}); const g = d.build(p); if (d.anim && g.userData.rig) d.anim(g.userData.rig, { ...idleCtx, y: d.pilot === 'bird' ? 2 : 0, speed: d.pilot === 'bird' ? 5 : 0 }, p); return snapThumb(g); }; }
+function assetThumb(type, params) { return () => { const d = ASSETS[type], p = Object.assign(defaultParams(type), params || {}, { _thumb: true }); const g = d.build(p); if (d.anim && g.userData.rig) d.anim(g.userData.rig, { ...idleCtx, y: d.pilot === 'bird' ? 2 : 0, speed: d.pilot === 'bird' ? 5 : 0 }, p); return snapThumb(g); }; }
 function mannequin() { const p = Object.assign(defaultParams('person'), { look: 'mannequin', pose: 'stand' }); const g = buildPerson(p); animPerson(g.userData.rig, idleCtx, p); return { g, p }; }
 function poseThumb(kind) {
   return () => {
@@ -5458,15 +5496,13 @@ tlc.addEventListener('drop', e => { const id = e.dataTransfer.getData('text/x-ca
 const COMM_ROAD = [[0, 0, -1700], [0, 0, -1100], [0, 0, -420], [0, 0, -180], [30, 0, -20], [130, 1, 110], [280, 1.5, 175], [430, 2.5, 190], [540, 6.5, 170], [640, 7, 130], [740, 6.5, 80], [840, 2.5, 20], [930, 1, -70], [990, 0.5, -190], [1010, 0, -330], [1010, 0, -620], [1010, 0, -1200], [1010, 0, -1700]]; // reta continua até sumir no horizonte nos dois sentidos
 // senta uma pessoa no banco do motorista com base nas dimensões REAIS do carro (H-point, bitola, entre-eixos, altura do teto)
 function seatInCar(person, car) {
-  const cp = car.params || {}, Hc = +cp.height || 1.45, Wc = +cp.width || 1.8, Lc = +cp.length || 4.5, wb = +cp.wheelbase || Lc * 0.6, fo = +cp.foverhang || Lc * 0.2;
-  const pp = person.params, H = +pp.height || 1.75, hipY = H * 0.52;
-  const hp = clamp(0.31 + (Hc - 1.3) * 0.85, 0.28, 0.8); // H-point acima do solo: 911 ≈ 0,31 m · sedã ≈ 0,45 · SUV ≈ 0,7
-  let rec = 0.3; const top = (r) => hp + (H - hipY) * Math.cos(r) + 0.02;
-  while (top(rec) > Hc - 0.06 && rec < 0.55) rec += 0.05; // pessoa alta em carro baixo: reclina o banco como na vida real
+  const cp = car.params || {}, C = carCabin(cp), pp = person.params, H = +pp.height || 1.75, hipY = H * 0.52;
+  let rec = 0.3; const top = (r) => C.hp + (H - hipY) * Math.cos(r) + 0.02;
+  while (top(rec) > C.H - 0.06 && rec < 0.55) rec += 0.05; // pessoa alta em carro baixo: reclina o banco como na vida real
   pp.pose = 'drive'; pp.recline = +rec.toFixed(2);
   person.cons.mount = car.id; person.cons.ground = false; person.tracks = person.tracks || {}; delete person.tracks.px; delete person.tracks.py; delete person.tracks.pz;
-  Object.assign(person.base, { px: Wc / 2 - 0.55, py: hp - hipY * 0.22, pz: (Lc / 2 - fo) - 0.55 * wb, rx: 0, ry: 0, rz: 0 });
-  return { headroom: Hc - top(rec), recline: rec };
+  Object.assign(person.base, { px: C.xd, py: C.hp - hipY * 0.22, pz: C.zh, rx: 0, ry: 0, rz: 0 });
+  return { headroom: C.H - top(rec), recline: rec };
 }
 function commScene() {
   const P = newProject(); P.name = 'Comercial esportivo — 911 na rodovia'; P.fps = 24; P.duration = 719; P.aspect = '2.39:1';
@@ -5490,7 +5526,7 @@ function commScene() {
   { // o carro larga no mesmo ponto de antes (0,0,-420); a estrada só continua para trás até o horizonte
     const { S, len } = sampleRoad(road.params); let best = 0, bd = 1e9; for (const q of S) { const d = q.x * q.x + (q.z + 420) ** 2; if (d < bd) { bd = d; best = q.s; } }
     roadFollow(road, car, 260, 1, 1, best / len * 100, 0, true); }
-  const drv = add('person', { name: 'Piloto', params: Object.assign(defaultParams('person'), { look: 'clothes', height: 1.78, shirt: '#1d1e22', pants: '#1d1e22', pose: 'drive' }) });
+  const drv = add('person', { name: 'Piloto', params: Object.assign(defaultParams('person'), { look: 'real', height: 1.78, shirt: '#1d1e22', pants: '#1d1e22', pose: 'drive' }) });
   seatInCar(drv, car); buildRuntime(drv);
   car.speedProf = realisticProfile(car, { vMax: 215, v0: 170, aLat: 1.05, aAcc: 0.55, aBrk: 1.0 }); applySpeedProfile(car);
   return { road, car };
@@ -5634,6 +5670,91 @@ function applyFlatUI() {
   const GI = { cams: 'video', chars: 'person', animals: 'paw', veh: 'car', scene: 'building', util: 'crosshair' };
   for (const g of OBJ_GROUPS) g[2] = ic(GI[g[0]] || 'box', 13);
   if (typeof project !== 'undefined' && project) { renderAssets(); renderOutliner(); renderChanList(); renderInspector(); }
+}
+
+/* ============================================================
+   Corpo humano realista (base mesh)
+   Modelos: Quaternius — Universal Base Characters (CC0 1.0, domínio público)
+   O rig procedural continua calculando poses/animação (invisível);
+   o esqueleto do modelo é "mirado" na direção de cada segmento do rig.
+   ============================================================ */
+const HUMAN_FILES = { m: 'models/Superhero_Male.glb', f: 'models/Superhero_Female.glb' };
+const _humanTpl = {}; let _skelUtils = null;
+function loadHumanTpl(sex) {
+  const k = sex === 'f' ? 'f' : 'm';
+  if (_humanTpl[k]) return _humanTpl[k];
+  return _humanTpl[k] = (async () => {
+    if (!_skelUtils) _skelUtils = await import('three/addons/utils/SkeletonUtils.js');
+    const g = await (await gltfLoader()).loadAsync(HUMAN_FILES[k]);
+    const root = g.scene; root.updateMatrixWorld(true);
+    // altura real do modelo em repouso (topo do crânio) e altura da pelve
+    let top = 0; root.traverse(n => { if (n.isSkinnedMesh) { n.computeBoundingBox(); const b = n.boundingBox.clone().applyMatrix4(n.matrixWorld); top = Math.max(top, b.max.y); } });
+    const pelvis = root.getObjectByName('pelvis'), pY = pelvis.getWorldPosition(new THREE.Vector3()).y;
+    return { root, top, pY };
+  })().catch(e => { console.warn('base mesh', e); _humanTpl[k] = null; throw e; });
+}
+const HUMAN_CHAIN = [
+  ['pelvis', 'rot', 'hips'], ['spine_01', 'rot', 'sp1'], ['spine_02', 'rot', 'sp2'], ['spine_03', 'rot', 'torso'], ['neck_01', 'rot', 'neck'], ['Head', 'rot', 'head'],
+  ['upperarm_l', 'aim', 'arm', 0, 0], ['lowerarm_l', 'aim', 'arm', 0, 1], ['hand_l', 'aim', 'arm', 0, 2],
+  ['upperarm_r', 'aim', 'arm', 1, 0], ['lowerarm_r', 'aim', 'arm', 1, 1], ['hand_r', 'aim', 'arm', 1, 2],
+  ['thigh_l', 'aim', 'leg', 0, 0], ['calf_l', 'aim', 'leg', 0, 1], ['foot_l', 'aim', 'leg', 0, 2],
+  ['thigh_r', 'aim', 'leg', 1, 0], ['calf_r', 'aim', 'leg', 1, 1], ['foot_r', 'aim', 'leg', 1, 2]
+];
+const CHILD_OF = { upperarm_l: 'lowerarm_l', lowerarm_l: 'hand_l', hand_l: 'middle_01_l', upperarm_r: 'lowerarm_r', lowerarm_r: 'hand_r', hand_r: 'middle_01_r', thigh_l: 'calf_l', calf_l: 'foot_l', foot_l: 'ball_l', thigh_r: 'calf_r', calf_r: 'foot_r', foot_r: 'ball_r' };
+// troca o visual procedural pelo corpo realista quando o modelo terminar de carregar
+function attachHuman(g, p) {
+  const rig = g.userData.rig; if (!rig) return;
+  g.traverse(n => { if (n.isMesh) { n.visible = false; n.userData.proxy = true; } }); // continua clicável (raycast), mas invisível
+  rig.realPending = true;
+  loadHumanTpl(p.sex === 'f' || (p.sex == null && p.build < 0.3) ? 'f' : 'm').then(tpl => {
+    if (!g.userData.rig || g.userData.rig !== rig) return;
+    const m = _skelUtils.clone(tpl.root), s = rig.H / tpl.top; m.scale.setScalar(s); m.name = 'basemesh';
+    const neutral = p.skinMat === 'clay' ? (_humanTpl._clay || (_humanTpl._clay = new THREE.MeshStandardMaterial({ color: '#bdb8b0', roughness: .65 }))) : null;
+    m.traverse(n => { if (n.isMesh) { if (neutral) n.material = neutral; n.castShadow = true; n.receiveShadow = true; n.frustumCulled = false; n.userData.human = true; } });
+    g.add(m); m.updateMatrixWorld(true);
+    const B = {}; m.traverse(n => { if (n.isBone) B[n.name] = n; });
+    const restRel = {}, gInv = new THREE.Quaternion();
+    g.getWorldQuaternion(gInv).invert();
+    for (const [name] of HUMAN_CHAIN) { restRel[name] = gInv.clone().multiply(B[name].getWorldQuaternion(new THREE.Quaternion())); B[name].userData.restQ = B[name].quaternion.clone(); }
+    rig.real = { m, B, restRel, kY: (tpl.pY * s) / rig.hipY, pelvisRest: B.pelvis.position.clone() };
+    rig.realPending = false;
+    if (rig._lastPose) retargetHuman(rig); if (typeof bump === 'function') bump();
+  }).catch(() => { g.traverse(n => { if (n.userData.proxy) n.visible = true; }); rig.realPending = false; });
+}
+const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _qg = new THREE.Quaternion();
+const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _v4 = new THREE.Vector3();
+function relQ(node, out) { node.getWorldQuaternion(out); return out.premultiply(_qg); } // rotação relativa ao grupo da pessoa
+function retargetHuman(rig) {
+  rig._lastPose = true; const R = rig.real; if (!R) return;
+  const g = R.m.parent; if (!g) return; g.updateMatrixWorld(true);
+  g.getWorldQuaternion(_qg).invert();
+  const gWorld = g.getWorldQuaternion(new THREE.Quaternion());
+  const qHips = relQ(rig.hips, new THREE.Quaternion()), qTorso = relQ(rig.torso, new THREE.Quaternion()), qHead = relQ(rig.head, new THREE.Quaternion());
+  const rotOf = { hips: qHips, sp1: qHips.clone().slerp(qTorso, 0.4), sp2: qHips.clone().slerp(qTorso, 0.75), torso: qTorso, neck: qTorso.clone().slerp(qHead, 0.5), head: qHead };
+  // pontos do rig (mundo): ombro, cotovelo, punho, ponta da mão / quadril, joelho, tornozelo, ponta do pé
+  const pts = (seg, i) => {
+    if (seg === 'arm') { const A = rig.arms[i]; return [A.s.getWorldPosition(new THREE.Vector3()), A.e.getWorldPosition(new THREE.Vector3()), A.e.localToWorld(new THREE.Vector3(0, -rig.fArm, 0)), A.e.localToWorld(new THREE.Vector3(0, -rig.fArm - rig.hand, 0))]; }
+    const L = rig.legs[i]; return [L.h.getWorldPosition(new THREE.Vector3()), L.k.getWorldPosition(new THREE.Vector3()), L.a.getWorldPosition(new THREE.Vector3()), L.a.localToWorld(new THREE.Vector3(0, -rig.ankH * 0.85, rig.footL * 0.7))];
+  };
+  const cache = {};
+  // pelve: posição acompanha o quadril do rig (proporcional à altura do quadril do modelo)
+  const hp = rig.hips.position; const pw = g.localToWorld(_v1.set(hp.x, hp.y * R.kY, hp.z));
+  const pel = R.B.pelvis; pel.parent.updateMatrixWorld(true); pel.position.copy(pel.parent.worldToLocal(pw.clone()));
+  for (const [name, kind, src, side, idx] of HUMAN_CHAIN) {
+    const b = R.B[name]; if (!b) continue; b.parent.updateMatrixWorld(true);
+    const parentW = b.parent.getWorldQuaternion(_q1);
+    let want;
+    if (kind === 'rot') want = _q2.copy(gWorld).multiply(rotOf[src]).multiply(R.restRel[name]);
+    else {
+      // rig: model side 0 = _l = +x (esquerda do personagem); rig.arms/legs: índice 0 = sx +1
+      const key = src + side; const P = cache[key] || (cache[key] = pts(src, side));
+      const dWant = _v2.subVectors(P[idx + 1], P[idx]).normalize();
+      b.quaternion.copy(b.userData.restQ); b.updateMatrixWorld(true); const c = R.B[CHILD_OF[name]]; c.updateMatrixWorld(true);
+      const dCur = _v3.subVectors(c.getWorldPosition(_v4), b.getWorldPosition(new THREE.Vector3())).normalize();
+      want = _q2.setFromUnitVectors(dCur, dWant).multiply(b.getWorldQuaternion(_q3));
+    }
+    b.quaternion.copy(parentW.invert()).multiply(want); b.updateMatrixWorld(true);
+  }
 }
 
 init();
