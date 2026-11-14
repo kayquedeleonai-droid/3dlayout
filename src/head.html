@@ -2,7 +2,8 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#141415">
 <title>Layout3D — Previz procedural</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -165,7 +166,7 @@ kbd{font-family:var(--mono);background:var(--bg3);border:1px solid var(--line2);
 #tlbody{display:grid;grid-template-columns:200px 1fr;min-height:0}
 #chanList{border-right:1px solid var(--line);overflow:auto;background:var(--bg1);position:relative}
 #tlcanvasWrap{position:relative;min-width:0;min-height:0}
-#tlcanvas{position:absolute;inset:0;display:block}
+#tlcanvas{position:absolute;inset:0;display:block;width:100%;height:100%}
 .crow{display:flex;align-items:center;gap:7px;padding:0 10px;cursor:pointer;font-size:12px;border-bottom:1px solid #1d1d20}
 .crow:hover{background:var(--bg2)}
 .crow .cdot{width:8px;height:8px;border-radius:50%}
@@ -231,6 +232,86 @@ kbd{font-family:var(--mono);background:var(--bg3);border:1px solid var(--line2);
 ::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:5px;border:2px solid var(--bg1)}
 ::-webkit-scrollbar-track{background:transparent}
 #fileIn{display:none}
+
+/* ================= RESPONSIVO (celular / tablet) ================= */
+#mTransport,#mTabs,#mMenu,#mScrim,#bMore{display:none}
+body.touch button.icon{width:38px;height:38px}
+body.touch #tlcanvas,body.touch #vp canvas{touch-action:none}
+/* --- tablet paisagem: colunas mais estreitas --- */
+body.dev-tablet.landscape #main{grid-template-columns:228px 1fr 268px}
+body.dev-tablet.landscape{--tl-h:230px}
+body.dev-tablet #top .brand span,body.dev-tablet #bPrompt,body.dev-tablet #bOpen,body.dev-tablet #bSave{display:none}
+body.dev-tablet.portrait #top{gap:4px;padding:0 8px}
+body.dev-tablet.portrait #bHelp,body.dev-tablet.portrait #bNew,body.dev-tablet.portrait #bShot,body.dev-tablet.portrait #bExport,body.dev-tablet.portrait #top .sep{display:none}
+body.dev-tablet.portrait #bMore{display:grid;font-size:20px}
+body.dev-tablet.portrait #selRender{max-width:150px}
+body.dev-tablet #tlbody{grid-template-columns:150px 1fr}
+body.dev-tablet #pip{transform:scale(.8);transform-origin:top right}
+/* --- gavetas (celular e tablet retrato) --- */
+body.dev-phone,body.dev-tablet.portrait{--mtabs-h:calc(58px + env(safe-area-inset-bottom));--mtr-h:0px}
+body.dev-phone{--mtr-h:48px}
+body.dev-phone #mTabs,body.dev-tablet.portrait #mTabs{display:flex}
+body.dev-tablet.portrait #mTabs [data-sh=tl]{display:none}
+body.dev-phone #mTransport{display:flex}
+body.dev-phone #mScrim,body.dev-tablet.portrait #mScrim{display:block;position:fixed;inset:0;bottom:calc(var(--mtabs-h) + var(--mtr-h));background:rgba(0,0,0,.35);z-index:38;opacity:0;pointer-events:none;transition:opacity .2s}
+body[data-sheet=lib] #mScrim,body[data-sheet=obj] #mScrim,body[data-sheet=prop] #mScrim,body[data-sheet=tl] #mScrim,body[data-sheet=more] #mScrim{opacity:1;pointer-events:auto}
+body.dev-phone #app{grid-template-rows:auto 1fr auto auto;height:100dvh}
+body.dev-tablet.portrait #app{grid-template-rows:50px 1fr 4px var(--tl-h) auto;height:100dvh}
+body.dev-tablet.portrait{--tl-h:210px}
+body.dev-phone #main,body.dev-tablet.portrait #main{grid-template-columns:1fr}
+body.dev-phone #left,body.dev-phone #right,body.dev-phone #tl,body.dev-phone #mMenu,
+body.dev-tablet.portrait #left,body.dev-tablet.portrait #right,body.dev-tablet.portrait #mMenu{
+  display:flex;position:fixed;left:0;right:0;bottom:calc(var(--mtabs-h) + var(--mtr-h));height:min(64dvh,620px);z-index:40;
+  transform:translateY(calc(100% + var(--mtabs-h) + var(--mtr-h) + 20px));transition:transform .24s cubic-bezier(.2,.8,.2,1);
+  border:1px solid var(--line2);border-bottom:0;border-radius:16px 16px 0 0;box-shadow:0 -16px 40px rgba(0,0,0,.5);overflow:hidden}
+body.dev-tablet.portrait #left,body.dev-tablet.portrait #right,body.dev-tablet.portrait #mMenu{left:auto;right:12px;width:min(440px,calc(100vw - 24px));bottom:calc(var(--mtabs-h) + 8px);border-radius:16px;border:1px solid var(--line2)}
+body.dev-phone #tl{display:grid}
+body.dev-phone #mMenu,body.dev-tablet.portrait #mMenu{flex-direction:column}
+body[data-sheet=lib] #left,body[data-sheet=obj] #right,body[data-sheet=prop] #right,body[data-sheet=tl] #tl,body[data-sheet=more] #mMenu{transform:none!important}
+body.dev-phone[data-sheet=obj] #propPanel,body.dev-tablet.portrait[data-sheet=obj] #propPanel{display:none}
+body.dev-phone[data-sheet=prop] #objPanel,body.dev-tablet.portrait[data-sheet=prop] #objPanel{display:none}
+body.dev-phone #objPanel,body.dev-tablet.portrait #objPanel{height:auto;flex:1;border-bottom:0}
+body.dev-phone #left .ph::before,body.dev-phone #right .ph::before,body.dev-phone #mMenu .ph::before,body.dev-tablet.portrait .panel .ph::before{content:'';position:absolute;left:50%;top:6px;width:36px;height:4px;border-radius:2px;background:var(--line2);transform:translateX(-50%)}
+body.dev-phone .panel .ph{position:relative;padding-top:16px}
+body.dev-phone #resizer,body.dev-tablet.portrait #left+#vpwrap+#right~#resizer{display:none}
+body.dev-phone #resizer{display:none}
+/* topo compacto no celular */
+body.dev-phone #top{height:calc(46px + env(safe-area-inset-top));padding:env(safe-area-inset-top) 8px 0;gap:2px}
+body.dev-phone #top>*:not(.brand):not(#bUndo):not(#bRedo):not(#bWatch):not(#bMore):not(.grow){display:none!important}
+body.dev-phone #top .brand{font-size:13px;margin-right:auto}
+body.dev-phone #top .brand span{display:none}
+body.dev-phone #bMore{display:grid;font-size:20px}
+body.dev-phone #bWatch{padding:6px 10px;font-size:12px}
+/* barra de transporte e abas */
+#mTransport{align-items:center;gap:2px;padding:0 8px;height:48px;background:var(--bg1);border-top:1px solid var(--line)}
+#mTransport .mplay{color:var(--tx);font-size:16px}
+#mScrub{flex:1;min-width:60px;margin:0 8px;accent-color:var(--acc);height:28px}
+#mTime{color:var(--tx2);font-size:11.5px;min-width:44px;text-align:right}
+#mTabs{background:var(--bg1);border-top:1px solid var(--line);padding:4px 4px env(safe-area-inset-bottom);height:var(--mtabs-h);z-index:45;position:relative}
+#mTabs button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:0;background:transparent;border-radius:10px;color:var(--tx3);font-size:10.5px;padding:4px 0}
+#mTabs button.on{color:var(--tx);background:var(--bg3)}
+/* menu */
+.mmBody{overflow:auto;padding:4px 14px 18px}
+.mmGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mmGrid button{height:46px;text-align:left;padding:0 12px;white-space:normal;line-height:1.2}
+.mmRow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;color:var(--tx2)}
+.mmRow select{height:38px;min-width:180px}
+/* viewport no celular */
+body.dev-phone #pip,body.dev-phone #axesWrap,body.dev-phone #hudKeys{display:none!important}
+body.dev-phone #rail{left:8px;top:8px;padding:3px;max-height:calc(100% - 16px);overflow-y:auto;border-radius:10px}
+body.dev-phone #viewBar{left:8px;right:8px;bottom:8px;transform:none;overflow-x:auto;justify-content:flex-start}
+body.dev-phone #lensBar{left:8px;right:8px;bottom:60px;transform:none;max-width:none;overflow-x:auto;padding:6px}
+body.dev-phone #lensBar .lbrow{flex-wrap:nowrap}
+body.dev-phone #lensBar select{max-width:150px}
+body.dev-phone #pilotHud{bottom:60px;max-width:calc(100% - 16px)}
+body.dev-phone .lbl{font-size:11px}
+body.dev-phone #tlbody{grid-template-columns:120px 1fr}
+body.dev-phone #modalBox,body.dev-tablet.portrait #modalBox{width:100vw;max-height:92dvh;border-radius:16px 16px 0 0;align-self:flex-end}
+body.dev-phone #modal{align-items:flex-end}
+body.dev-phone .mgrid{grid-template-columns:1fr}
+body.dev-phone input,body.dev-phone select,body.dev-phone textarea{font-size:16px}
+body.dev-phone #cineBar{left:0;right:0;bottom:0;padding:8px 10px calc(8px + env(safe-area-inset-bottom))}
+body.dev-phone #cineBar .row{flex-wrap:wrap;gap:6px}
 </style>
 </head>
 <body>
