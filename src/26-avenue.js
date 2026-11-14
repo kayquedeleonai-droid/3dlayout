@@ -80,27 +80,50 @@ function buildAvenueLoop() {
   car.base.px = hero[0].x; car.base.pz = 0; buildRuntime(car);
   const drv = add('person', { name: 'Piloto', params: Object.assign(defaultParams('person'), { look: 'real', height: 1.78 }) });
   seatInCar(drv, car); buildRuntime(drv);
-  // ---------- câmera: FPV orbitando 360° — 4 voltas de 7,5 s ----------
+  // ---------- câmera: FPV orbitando 360° — 3 voltas de 10 s, com rampas ----------
+  // movimento de câmera de verdade: o centro da órbita segue o carro suavizado (troca de faixa vira deriva no quadro,
+  // não tranco); a velocidade angular tem rampa (demora nos 3/4 de frente e de trás, acelera nas laterais);
+  // raio e altura respiram junto; mira com leve antecipação; tudo amostrado quadro a quadro, sem simplificar.
+  const gauss = (arr, sig) => { const r = Math.ceil(sig * 3), w = []; for (let j = -r; j <= r; j++) w.push(Math.exp(-(j * j) / (2 * sig * sig))); return arr.map((_, i) => { let a2 = 0, ws = 0; for (let j = -r; j <= r; j++) { const q = arr[clamp(i + j, 0, arr.length - 1)]; a2 += q * w[j + r]; ws += w[j + r]; } return a2 / ws; }); };
+  const cxS = gauss(hero.map(h => h.x), 16), yawS = gauss(yaw, 18);   // centro da órbita: carro suavizado (~0,7 s)
   const cam = addObject('camera', { silent: true, name: 'Loop 360° · FPV', base: { px: 0, py: 1.2, pz: 0, focal: 20 } });
   const B = CAMERA_BODIES.komodo, Ls = LENS_SETS.generic; Object.assign(cam.params, { body: 'komodo', sensorW: B.w, sensorH: B.h, lensSet: 'generic', squeeze: '1', tstop: Ls.t, focusAuto: true });
-  cam.cons.aim = car.id; cam.cons.aimH = 0.62; cam.cons.shake = 0.3; cam.cons.shakeFreq = 2.2; cam.gear = { type: 'fpv' };
-  const LOOP = 240, ring = []; // quadros por volta
+  cam.cons.shake = 0.12; cam.cons.shakeFreq = 1.4; cam.gear = { type: 'fpv' };
+  const LOOPS = 3, TH0 = Math.PI * 0.8, A = 0.21, ring = [];
   for (let f = 0; f < N; f++) {
-    const h = hero[f], th = 2 * Math.PI * f / LOOP + Math.PI * 0.82, y = yaw[f] * DEG; // começa 3/4 de frente
-    const sn = Math.sin(th), cs = Math.cos(th), R = 6.4 + 0.9 * cs * cs, ht = 1.05 + 2.95 * sn * sn;  // laterais mais altas: passa por cima do trânsito vizinho
-    const lx = R * sn, lz = R * cs;
-    ring.push({ f, x: h.x + lx * Math.cos(y) + lz * Math.sin(y), y: ht, z: h.z - lx * Math.sin(y) + lz * Math.cos(y) });
+    const phi = 2 * Math.PI * LOOPS * f / N;                 // fase uniforme (3 voltas exatas → loop perfeito)
+    const th = TH0 + phi - A * Math.sin(2 * phi);            // rampa: velocidade 0,58× nos 3/4, 1,42× nas laterais
+    const k = Math.sin(th - TH0) ** 2;                        // 0 nos ângulos-herói, 1 nas laterais
+    const R = 7.4 - 1.3 * k, ht = 0.95 + 1.65 * (k * k * (3 - 2 * k));
+    const y = yawS[f] * DEG, lx = R * Math.sin(th), lz = R * Math.cos(th), cx = cxS[f], cz = hero[f].z;
+    ring.push({ f, th, R, cx, cz, yw: y, x: cx + lx * Math.cos(y) + lz * Math.sin(y), y: ht, z: cz - lx * Math.sin(y) + lz * Math.cos(y), spd: 1 - 2 * A * Math.cos(2 * phi) });
   }
-  // se a órbita passaria por dentro de outro veículo, a câmera sobe por cima dele (curva suavizada)
-  const need = ring.map(r => { let m = 0; const t = r.f / fps; for (const c of traffic) if (Math.abs(r.x - laneX(c.lane)) < 2.2 && Math.abs(r.z - zOf(c, t)) < c.L / 2 + 1.6) m = Math.max(m, (c.bus ? 3.2 : 1.8) + 0.9); return m; });
-  const lift = need.map((_, i) => { let m = 0; for (let j = Math.max(0, i - 22); j <= Math.min(N - 1, i + 22); j++) m = Math.max(m, need[j]); return m; });
-  const sm = lift.map((_, i) => { let a = 0, w = 0; for (let j = -12; j <= 12; j++) { const q = lift[clamp(i + j, 0, N - 1)], g = Math.exp(-(j * j) / 60); a += q * g; w += g; } return a / w; });
-  ring.forEach((r, i) => { r.y = Math.max(r.y, sm[i]); });
-  for (const ch of ['x', 'y', 'z']) writeSamples(cam, 'p' + ch, ring.map(r => ({ f: r.f, v: r[ch] })), 'simplify', 0.004);
+  // se a órbita passaria perto de outro veículo, sobe por cima dele — com rampa longa (≈1 s), nunca de repente
+  const need = ring.map(r => { let m = 0; const t = r.f / fps; for (const c of traffic) if (Math.abs(r.x - laneX(c.lane)) < 2.4 && Math.abs(r.z - zOf(c, t)) < c.L / 2 + 2) m = Math.max(m, (c.bus ? 3.2 : 1.8) + 1.0); return m; });
+  const lift = need.map((_, i) => { let m = 0; for (let j = Math.max(0, i - 30); j <= Math.min(N - 1, i + 30); j++) m = Math.max(m, need[j]); return m; });
+  const liftS = gauss(lift, 10);
+  // quando sobe por cima de alguém, também se afasta (mantém o ângulo de olhar e o carro inteiro no quadro)
+  const extra = ring.map((r, i) => Math.max(0, liftS[i] - r.y)), exS = gauss(extra, 6);
+  ring.forEach((r, i) => { const e = exS[i], R2 = r.R + e * 1.1, lx = R2 * Math.sin(r.th), lz = R2 * Math.cos(r.th); r.x = r.cx + lx * Math.cos(r.yw) + lz * Math.sin(r.yw); r.z = r.cz - lx * Math.sin(r.yw) + lz * Math.cos(r.yw); r.y = r.y + e; });
+  // reconfere: depois de se afastar, pode ter encostado em outro → sobe o necessário (suave)
+  const need2 = ring.map(r => { let m = 0; const t = r.f / fps; for (const c of traffic) if (Math.abs(r.x - laneX(c.lane)) < 2.4 && Math.abs(r.z - zOf(c, t)) < c.L / 2 + 2) m = Math.max(m, (c.bus ? 3.2 : 1.8) + 1.0); return m; });
+  const l2 = gauss(need2.map((_, i) => { let m = 0; for (let j = Math.max(0, i - 30); j <= Math.min(N - 1, i + 30); j++) m = Math.max(m, need2[j]); return m; }), 10);
+  ring.forEach((r, i) => { r.y = Math.max(r.y, l2[i]); });
+  const ys = gauss(ring.map(r => r.y), 4); ring.forEach((r, i) => { r.y = ys[i]; });
+  for (const ch of ['x', 'y', 'z']) writeSamples(cam, 'p' + ch, ring.map(r => ({ f: r.f, v: r[ch] })), 'every');
+  // inclinação de FPV: banca para dentro da curva, mais forte quando acelera nas laterais
+  writeSamples(cam, 'rz', ring.map(r => ({ f: r.f, v: -(3 + 5 * (r.spd - 0.58) / 0.84) })), 'every');
   cam.base.px = ring[0].x; cam.base.py = ring[0].y; cam.base.pz = ring[0].z; buildRuntime(cam);
+  // alvo da mira: carro suavizado + 2 m à frente (o carro "puxa" o quadro, com folga para respirar)
+  const tgt = add('null', { name: 'Alvo da câmera (loop)' }); tgt.camHidden = true;
+  const ax = gauss(hero.map(h => h.x), 9);
+  writeSamples(tgt, 'px', hero.map((h, i) => ({ f: h.f, v: ax[i] + Math.sin(yawS[i] * DEG) * 0.8 })), 'every');
+  writeSamples(tgt, 'pz', hero.map((h, i) => ({ f: h.f, v: h.z + 0.8 })), 'every');
+  tgt.base.py = 0.62; buildRuntime(tgt);
+  cam.cons.aim = tgt.id; cam.cons.aimH = 0;
   // câmera nunca atravessa um carro
   let camHits = 0; for (const r of ring) { const t = r.f / fps; for (const c of traffic) if (Math.abs(r.x - laneX(c.lane)) < 1.4 && Math.abs(r.z - zOf(c, t)) < c.L / 2 + 0.4 && r.y < (c.bus ? 3.4 : 1.9)) camHits++; }
-  project.shots = [{ cam: cam.id, start: 0, end: DUR, name: 'Loop 360° · carro herói', notes: 'FPV orbitando o carro: 4 voltas de 7,5 s, baixo na frente/traseira (1 m) e alto nas laterais (4 m, por cima do trânsito). Primeiro e último quadro no mesmo ângulo — dá para emendar em loop e trocar o carro na IA.' }];
+  project.shots = [{ cam: cam.id, start: 0, end: DUR, name: 'Loop 360° · carro herói', notes: 'FPV orbitando o carro: 3 voltas de 10 s com rampa — demora nos 3/4 de frente e de trás (baixo, 1 m, 7,4 m de distância) e acelera nas laterais subindo a ~3,5 m por cima do trânsito, bancando para dentro. Centro da órbita suavizado: o carro desliza no quadro nas trocas de faixa. Primeiro e último quadro iguais — loop perfeito para trocar o carro na IA.' }];
   normalizeShots(); project.activeCamera = cam.id;
   rebuildAll(); applyFrame(0); commit(); renderOutliner(); renderInspector(); tlDirty = true; renderViewSel(); setView('cam');
   return { car, hits, hitL, camHits, km: (hero[N - 1].z / 1000).toFixed(2), vmin: Math.min(...hero.map(h => h.v)) * 3.6 };
