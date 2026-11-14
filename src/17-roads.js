@@ -50,6 +50,7 @@ function buildRoadPath(p, g) {
   const both = (mat, a, b, y = lift, from, to) => { strip(mat, () => [a, y], () => [b, y], from, to); strip(mat, () => [-b, y], () => [-a, y], from, to); };
   const dashed = (mat, a, b, y, dash = 4, gap = 12) => { let i0 = null; for (let i = 0; i < S.length; i++) { const on = (S[i].s % (dash + gap)) < dash; if (on && i0 === null) i0 = i; if ((!on || i === S.length - 1) && i0 !== null) { strip(mat, () => [a, y], () => [b, y], i0, Math.max(i0 + 1, i)); i0 = null; } } };
   const asphalt = roadMat(p.asphalt || '#3a3c40'), white = roadMat('#e8e6e1', { r: .8 }), yel = roadMat('#e0b030', { r: .8 }), shoulderM = roadMat('#55575b'), dirt = roadMat('#7b7364'), conc = roadMat('#a7a49d', { r: .9 }), curb = roadMat('#c7c4bd', { r: .9 });
+  white.userData.clay = yel.userData.clay = 'lines'; asphalt.userData.clay = shoulderM.userData.clay = 'asphalt'; conc.userData.clay = curb.userData.clay = dirt.userData.clay = 'curb';
   strip(asphalt, () => [-hw, lift], () => [hw, lift]);
   if (sh > 0) both(shoulderM, hw, hw + sh, lift - 0.005);
   // pintura
@@ -230,7 +231,7 @@ function roadFollow(road, obj, kmh, lane, dir, startPct, fStart, silent) {
   if (silent) return; commit(); tlDirty = true; pathVer = -1; bump(); toast(`${obj.name} anda pela estrada: frames ${f0}–${out.px[out.px.length - 1].f}`);
 }
 function initRoadUI() {
-  insp.addEventListener('change', e => { const o = sel && getObj(sel); if (o && e.target.id === 'consGround') { o.cons.ground = e.target.checked ? undefined : false; bump(); commit(); } if (o && e.target.id === 'camHid') { o.camHidden = e.target.checked || undefined; bump(); commit(); } if (o && e.target.id === 'frameSel') { const [x, y] = e.target.value.split(',').map(Number); o.cons.frameX = x; o.cons.frameY = y; if (!o.cons.aim) toast('O enquadramento nos terços funciona quando a câmera mira um objeto (Mirar em)'); bump(); commit(); } });
+  insp.addEventListener('change', e => { const o = sel && getObj(sel); if (o && e.target.id === 'consGround') { o.cons.ground = e.target.checked ? undefined : false; bump(); commit(); } if (o && e.target.id === 'clayHero') { o.clayHero = e.target.checked || undefined; bump(); commit(); if (typeof renderClayBar === 'function') renderClayBar(); } if (o && e.target.id === 'camHid') { o.camHidden = e.target.checked || undefined; bump(); commit(); } if (o && e.target.id === 'frameSel') { const [x, y] = e.target.value.split(',').map(Number); o.cons.frameX = x; o.cons.frameY = y; if (!o.cons.aim) toast('O enquadramento nos terços funciona quando a câmera mira um objeto (Mirar em)'); bump(); commit(); } });
   insp.addEventListener('click', e => {
     const o = sel && getObj(sel), b = e.target.closest('button'); if (!o || !b || o.type !== 'roadpath') return;
     if (b.dataset.rpre) { const pr = ROAD_PRESETS[b.dataset.rpre]; o.params.pts = pr.pts.map(a => a.slice()); o.params.closed = !!pr.closed; o.params.bridge = !pr.noBridge; roadSelPt = -1; rebuildRoad(o, true); }

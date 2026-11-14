@@ -89,7 +89,7 @@ function buildAvenueLoop() {
   // ---------- herói ----------
   const hero = []; for (let f = 0; f < N; f++) hero.push({ f, x: heroLat(f / fps), z: zH(f / fps) });
   let hits = 0; for (const h of hero) for (const c of traffic) { const t = h.f / fps; if (Math.abs(h.x - laneX(c.lane)) < 2.45 && Math.abs(zr(c, t)) < (LH + c.L) / 2 + 0.5) hits++; }
-  const car = add('realcar', { name: 'Carro herói (trocar na IA)', params: Object.assign(carDefaults('taycan'), { modelName: CAR_DB.taycan.name, color: '#c8102e' }) });
+  const car = add('realcar', { name: 'Carro herói (trocar na IA)', params: Object.assign(carDefaults('taycan'), { modelName: CAR_DB.taycan.name, color: '#c8102e' }) }); car.clayHero = true;
   writeSamples(car, 'px', hero.map(h => ({ f: h.f, v: h.x })), 'every'); writeSamples(car, 'pz', hero.map(h => ({ f: h.f, v: h.z })), 'every');
   const yaw = hero.map(h => { const t = h.f / fps, e = 0.5 / fps; return Math.atan2(heroLat(t + e) - heroLat(t - e), 2 * e * VH) / DEG; });
   writeSamples(car, 'ry', hero.map((h, i) => ({ f: h.f, v: yaw[i] })), 'every');

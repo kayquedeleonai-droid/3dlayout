@@ -33,7 +33,7 @@ function commScene() {
   const rnd = mulberry(77);
   // árvores em faixas a 18–90 m da pista (parallax de velocidade), fora do rio
   for (let i = 0, n = 0; i < 900 && n < 140; i++) { const x = -120 + rnd() * 1250, z = -700 + rnd() * 980, d = distRoad(x, z); if (d < 18 || d > 95) continue; const rx = x - 640, rz = z - 130, along = rx * Math.sin(-62 * DEG) + rz * Math.cos(-62 * DEG), across = rx * Math.cos(-62 * DEG) - rz * Math.sin(-62 * DEG); if (Math.abs(across) < 20 && Math.abs(along) < 450) continue; const t = rnd() < 0.6 ? 'pine' : 'tree'; add(t, { name: 'Árvore', params: Object.assign(defaultParams(t), { height: 9 + rnd() * 10, seed: (rnd() * 999) | 0 }), base: { px: x, py: gnd(x, z) - 0.1, pz: z, ry: rnd() * 360 } }); n++; }
-  const car = add('realcar', { name: 'Porsche 911 (herói)', params: Object.assign(carDefaults('p911'), { modelName: CAR_DB.p911.name, color: '#c8102e' }) });
+  const car = add('realcar', { name: 'Porsche 911 (herói)', params: Object.assign(carDefaults('p911'), { modelName: CAR_DB.p911.name, color: '#c8102e' }) }); car.clayHero = true;
   buildRuntime(car);
   { // o carro larga no mesmo ponto de antes (0,0,-420); a estrada só continua para trás até o horizonte
     const { S, len } = sampleRoad(road.params); let best = 0, bd = 1e9; for (const q of S) { const d = q.x * q.x + (q.z + 420) ** 2; if (d < bd) { bd = d; best = q.s; } }

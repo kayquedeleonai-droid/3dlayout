@@ -124,6 +124,7 @@ function renderInspector() {
     <div class="prow wide"><span class="lb">Seguir</span><select data-cons="follow">${optsObj(c.follow)}</select></div>
     <div class="prow wide"><span class="lb">Montar (rig)</span><select data-cons="mount">${optsObj(c.mount)}</select></div>
     ${o.type !== 'camera' ? `<div class="prow wide"><span class="lb">Esconder nas câmeras</span><input type="checkbox" id="camHid" ${o.camHidden ? 'checked' : ''} title="Aparece no editor, mas não nas câmeras nem no vídeo (carro de câmera, equipe, marcações)"></div>` : ''}
+    ${o.type !== 'camera' && o.type !== 'null' ? `<div class="prow wide"><span class="lb">Principal no Clay</span><input type="checkbox" id="clayHero" ${o.clayHero ? 'checked' : ''} title="No modo Clay, este objeto usa a cor de 'Carro principal' (destaque)"></div>` : ''}
     ${followsGround(o) ? `<div class="prow wide"><span class="lb">Seguir estrada/terreno</span><input type="checkbox" id="consGround" ${c.ground === false ? '' : 'checked'}></div>` : ''}
     <div class="prow wide"><span class="lb">Tremor (°)</span><input type="number" step="0.1" min="0" data-cons="shake" value="${c.shake}"></div>
     <div class="prow wide"><span class="lb">Freq. tremor</span><input type="number" step="0.1" min="0" data-cons="shakeFreq" value="${c.shakeFreq}"></div>

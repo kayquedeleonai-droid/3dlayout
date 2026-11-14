@@ -67,6 +67,26 @@ function readSwap(cam) {
 }
 function readRestore() { if (_readFog != null && scene.fog) { scene.fog.density = _readFog; if (_readFogCol) scene.fog.color.copy(_readFogCol); } _readFog = null; }
 function readReset() { for (const m of _readMats.values()) m.dispose && m.dispose(); _readMats.clear(); if (ground.userData.readMat) { ground.userData.readMat = null; } }
+/* ---------- modo CLAY com cores editáveis por categoria ---------- */
+const CLAY_DEF = { hero: '#d9483b', lines: '#f6f6f2', asphalt: '#9b9c9e', curb: '#c9c9c7', vehicle: '#cfcfcf', person: '#cfcfcf', env: '#d8d8d8' };
+const CLAY_LABELS = [['hero', 'Carro principal'], ['lines', 'Faixas da rua'], ['asphalt', 'Asfalto'], ['curb', 'Calçada / meio-fio'], ['vehicle', 'Outros veículos'], ['person', 'Pessoas'], ['env', 'Cenário']];
+const _clayMats = new Map();
+function clayCol(k) { const c = project.settings.clay || {}; return c[k] || CLAY_DEF[k]; }
+function clayMatFor(hex, src) {
+  const side = src && src.side || THREE.FrontSide, tr = !!(src && src.transparent), op = tr ? src.opacity : 1, sk = src && src.skinning;
+  const k = hex + side + (tr ? 't' + op : ''); let m = _clayMats.get(k); if (m) return m;
+  m = new THREE.MeshStandardMaterial({ color: hex, roughness: 0.85, side, transparent: tr, opacity: tr ? Math.max(op, 0.45) : 1, depthWrite: !tr }); _clayMats.set(k, m); return m;
+}
+const CLAY_VEH = new Set(['realcar', 'car', 'sedan', 'suv', 'sport', 'bus', 'truck', 'van', 'pickup', 'moto', 'bike', 'parked', 'taxi']);
+function clayCat(o) { if (o.clayHero) return 'hero'; const t = o.type, A = ASSETS[t]; if (t === 'person' || t === 'crowd' || t === 'kid') return 'person'; if (CLAY_VEH.has(t) || (A && A.pilot === 'car')) return 'vehicle'; if (t === 'roadpath' || t === 'road' || t === 'street') return 'road'; return 'env'; }
+function clayRoadPart(m) { if (m.userData.clay) return m.userData.clay; const h = {}; m.color.getHSL(h); if (h.l > 0.7 || (h.s > 0.45 && h.h > 0.08 && h.h < 0.18)) return 'lines'; if (h.l < 0.32) return 'asphalt'; return 'curb'; }
+function claySwap() {
+  const sw = [];
+  const one = (m, cat) => { if (Array.isArray(m)) return m.map(x => one(x, cat)); if (!m || m.visible === false || !m.color) return m; return clayMatFor(clayCol(cat === 'road' ? clayRoadPart(m) : cat), m); };
+  for (const o of project.objects) { const r = rt.get(o.id); if (!r || !r.g.visible) continue; const cat = clayCat(o); r.g.traverse(n => { if (n.isMesh && !n.userData.helper && !n.userData.proxy && n.material) { sw.push([n, n.material]); n.material = one(n.material, cat); } }); }
+  sw.push([ground, ground.material]); ground.material = clayMatFor(clayCol('env'));
+  return sw;
+}
 let _skipConform = false;
 function buildRuntime(o) {
   const old = rt.get(o.id); if (old) { world.remove(old.g); disposeGroup(old.g); }
@@ -231,7 +251,7 @@ function setHelpersVisible(v) {
 function renderScene(rend, cam, mode, w, h, vx = 0, vy = 0, target = null) {
   const bg = scene.background, fog = scene.fog;
   let swapped = null;
-  if (mode === 'clay') scene.overrideMaterial = clayMat;
+  if (mode === 'clay') swapped = claySwap();
   else if (mode === 'normal') { scene.overrideMaterial = normalMat; scene.background = new THREE.Color('#8080ff'); scene.fog = null; }
   else if (mode === 'depth') { scene.overrideMaterial = depthMat; depthMat.uniforms.near.value = cam.near; scene.background = new THREE.Color('#000'); scene.fog = null; }
   else if (mode === 'read') swapped = readSwap(cam);

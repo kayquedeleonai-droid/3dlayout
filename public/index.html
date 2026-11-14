@@ -312,6 +312,17 @@ body.dev-phone .mgrid{grid-template-columns:1fr}
 body.dev-phone input,body.dev-phone select,body.dev-phone textarea{font-size:16px}
 body.dev-phone #cineBar{left:0;right:0;bottom:0;padding:8px 10px calc(8px + env(safe-area-inset-bottom))}
 body.dev-phone #cineBar .row{flex-wrap:wrap;gap:6px}
+#clayBar{position:absolute;right:12px;top:12px;width:236px;background:rgba(20,20,22,.94);border:1px solid var(--line2);border-radius:12px;padding:6px 10px 10px;backdrop-filter:blur(8px);z-index:6}
+#clayBar .cbh{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--tx)}
+#clayBar .cbh .icon{width:26px;height:26px;font-size:13px}
+#clayBar.min .cbb{display:none}
+#clayBar .cbr{display:flex;align-items:center;gap:8px;padding:3px 0;color:var(--tx2);cursor:pointer}
+#clayBar input[type=color]{width:30px;height:22px;padding:0;border:1px solid var(--line2);border-radius:6px;background:none;cursor:pointer}
+#clayBar .cbhero{margin-top:6px;color:var(--tx3);font-size:11px;line-height:1.35}
+#clayBar .cbhint{color:var(--tx3);font-size:11px;margin-top:4px}
+#clayBar button:not(.icon){width:100%;margin-top:6px;font-size:11.5px;white-space:normal}
+body:has(#pip:not([style*="none"])) #clayBar{top:auto;bottom:70px}
+body.dev-phone #clayBar{right:8px;top:8px;width:200px}
 </style>
 </head>
 <body>
@@ -1887,6 +1898,26 @@ function readSwap(cam) {
 }
 function readRestore() { if (_readFog != null && scene.fog) { scene.fog.density = _readFog; if (_readFogCol) scene.fog.color.copy(_readFogCol); } _readFog = null; }
 function readReset() { for (const m of _readMats.values()) m.dispose && m.dispose(); _readMats.clear(); if (ground.userData.readMat) { ground.userData.readMat = null; } }
+/* ---------- modo CLAY com cores editáveis por categoria ---------- */
+const CLAY_DEF = { hero: '#d9483b', lines: '#f6f6f2', asphalt: '#9b9c9e', curb: '#c9c9c7', vehicle: '#cfcfcf', person: '#cfcfcf', env: '#d8d8d8' };
+const CLAY_LABELS = [['hero', 'Carro principal'], ['lines', 'Faixas da rua'], ['asphalt', 'Asfalto'], ['curb', 'Calçada / meio-fio'], ['vehicle', 'Outros veículos'], ['person', 'Pessoas'], ['env', 'Cenário']];
+const _clayMats = new Map();
+function clayCol(k) { const c = project.settings.clay || {}; return c[k] || CLAY_DEF[k]; }
+function clayMatFor(hex, src) {
+  const side = src && src.side || THREE.FrontSide, tr = !!(src && src.transparent), op = tr ? src.opacity : 1, sk = src && src.skinning;
+  const k = hex + side + (tr ? 't' + op : ''); let m = _clayMats.get(k); if (m) return m;
+  m = new THREE.MeshStandardMaterial({ color: hex, roughness: 0.85, side, transparent: tr, opacity: tr ? Math.max(op, 0.45) : 1, depthWrite: !tr }); _clayMats.set(k, m); return m;
+}
+const CLAY_VEH = new Set(['realcar', 'car', 'sedan', 'suv', 'sport', 'bus', 'truck', 'van', 'pickup', 'moto', 'bike', 'parked', 'taxi']);
+function clayCat(o) { if (o.clayHero) return 'hero'; const t = o.type, A = ASSETS[t]; if (t === 'person' || t === 'crowd' || t === 'kid') return 'person'; if (CLAY_VEH.has(t) || (A && A.pilot === 'car')) return 'vehicle'; if (t === 'roadpath' || t === 'road' || t === 'street') return 'road'; return 'env'; }
+function clayRoadPart(m) { if (m.userData.clay) return m.userData.clay; const h = {}; m.color.getHSL(h); if (h.l > 0.7 || (h.s > 0.45 && h.h > 0.08 && h.h < 0.18)) return 'lines'; if (h.l < 0.32) return 'asphalt'; return 'curb'; }
+function claySwap() {
+  const sw = [];
+  const one = (m, cat) => { if (Array.isArray(m)) return m.map(x => one(x, cat)); if (!m || m.visible === false || !m.color) return m; return clayMatFor(clayCol(cat === 'road' ? clayRoadPart(m) : cat), m); };
+  for (const o of project.objects) { const r = rt.get(o.id); if (!r || !r.g.visible) continue; const cat = clayCat(o); r.g.traverse(n => { if (n.isMesh && !n.userData.helper && !n.userData.proxy && n.material) { sw.push([n, n.material]); n.material = one(n.material, cat); } }); }
+  sw.push([ground, ground.material]); ground.material = clayMatFor(clayCol('env'));
+  return sw;
+}
 let _skipConform = false;
 function buildRuntime(o) {
   const old = rt.get(o.id); if (old) { world.remove(old.g); disposeGroup(old.g); }
@@ -2051,7 +2082,7 @@ function setHelpersVisible(v) {
 function renderScene(rend, cam, mode, w, h, vx = 0, vy = 0, target = null) {
   const bg = scene.background, fog = scene.fog;
   let swapped = null;
-  if (mode === 'clay') scene.overrideMaterial = clayMat;
+  if (mode === 'clay') swapped = claySwap();
   else if (mode === 'normal') { scene.overrideMaterial = normalMat; scene.background = new THREE.Color('#8080ff'); scene.fog = null; }
   else if (mode === 'depth') { scene.overrideMaterial = depthMat; depthMat.uniforms.near.value = cam.near; scene.background = new THREE.Color('#000'); scene.fog = null; }
   else if (mode === 'read') swapped = readSwap(cam);
@@ -2332,6 +2363,7 @@ function renderInspector() {
     <div class="prow wide"><span class="lb">Seguir</span><select data-cons="follow">${optsObj(c.follow)}</select></div>
     <div class="prow wide"><span class="lb">Montar (rig)</span><select data-cons="mount">${optsObj(c.mount)}</select></div>
     ${o.type !== 'camera' ? `<div class="prow wide"><span class="lb">Esconder nas câmeras</span><input type="checkbox" id="camHid" ${o.camHidden ? 'checked' : ''} title="Aparece no editor, mas não nas câmeras nem no vídeo (carro de câmera, equipe, marcações)"></div>` : ''}
+    ${o.type !== 'camera' && o.type !== 'null' ? `<div class="prow wide"><span class="lb">Principal no Clay</span><input type="checkbox" id="clayHero" ${o.clayHero ? 'checked' : ''} title="No modo Clay, este objeto usa a cor de 'Carro principal' (destaque)"></div>` : ''}
     ${followsGround(o) ? `<div class="prow wide"><span class="lb">Seguir estrada/terreno</span><input type="checkbox" id="consGround" ${c.ground === false ? '' : 'checked'}></div>` : ''}
     <div class="prow wide"><span class="lb">Tremor (°)</span><input type="number" step="0.1" min="0" data-cons="shake" value="${c.shake}"></div>
     <div class="prow wide"><span class="lb">Freq. tremor</span><input type="number" step="0.1" min="0" data-cons="shakeFreq" value="${c.shakeFreq}"></div>
@@ -3072,7 +3104,7 @@ function sanitizeProject(d) {
   p.objects = (d.objects || []).filter(o => ASSETS[o.type]).map(o => {
     const base = Object.assign({ px: 0, py: 0, pz: 0, rx: 0, ry: 0, rz: 0, sx: 1, sy: 1, sz: 1 }, o.base || {}); if (o.type === 'camera' && base.focal == null) base.focal = 35;
     const tracks = {}; for (const ch in (o.tracks || {})) { const ks = (o.tracks[ch] || []).map(k => Object.assign(mkKey(k.f, k.v), k)); if (ks.length) { sortKeys(ks); autoHandles(ks); tracks[ch] = ks; } }
-    return { id: o.id || uid(), type: o.type, name: o.name || ASSETS[o.type].label, params: Object.assign(defaultParams(o.type), o.params || {}), base, tracks, cons: Object.assign({ aim: null, aimH: 1, follow: null, mount: null, shake: 0, shakeFreq: 1.5 }, o.cons || {}), hidden: !!o.hidden, refs: o.refs || undefined, custom: o.custom || undefined, gear: o.gear || undefined, camHidden: o.camHidden || undefined, speedProf: Array.isArray(o.speedProf) ? o.speedProf.filter(p => isFinite(p.t) && isFinite(p.v)) : undefined, clips: (o.clips || []).filter(c => PERSON_ACTIONS[c.kind] || QUAD_ACTIONS[c.kind]).map(c => ({ id: c.id || uid('c'), kind: c.kind, start: +c.start, end: +c.end })) };
+    return { id: o.id || uid(), type: o.type, name: o.name || ASSETS[o.type].label, params: Object.assign(defaultParams(o.type), o.params || {}), base, tracks, cons: Object.assign({ aim: null, aimH: 1, follow: null, mount: null, shake: 0, shakeFreq: 1.5 }, o.cons || {}), hidden: !!o.hidden, refs: o.refs || undefined, custom: o.custom || undefined, gear: o.gear || undefined, camHidden: o.camHidden || undefined, clayHero: o.clayHero || undefined, speedProf: Array.isArray(o.speedProf) ? o.speedProf.filter(p => isFinite(p.t) && isFinite(p.v)) : undefined, clips: (o.clips || []).filter(c => PERSON_ACTIONS[c.kind] || QUAD_ACTIONS[c.kind]).map(c => ({ id: c.id || uid('c'), kind: c.kind, start: +c.start, end: +c.end })) };
   });
   if (p.activeCamera && !p.objects.find(o => o.id === p.activeCamera)) p.activeCamera = null;
   p.shots = (d.shots || []).filter(s => p.objects.find(o => o.id === s.cam)).map(s => ({ cam: s.cam, start: Math.round(+s.start || 0), end: Math.round(+s.end || 0), name: String(s.name || '').slice(0, 60), notes: String(s.notes || '').slice(0, 400) }));
@@ -4785,6 +4817,7 @@ function buildRoadPath(p, g) {
   const both = (mat, a, b, y = lift, from, to) => { strip(mat, () => [a, y], () => [b, y], from, to); strip(mat, () => [-b, y], () => [-a, y], from, to); };
   const dashed = (mat, a, b, y, dash = 4, gap = 12) => { let i0 = null; for (let i = 0; i < S.length; i++) { const on = (S[i].s % (dash + gap)) < dash; if (on && i0 === null) i0 = i; if ((!on || i === S.length - 1) && i0 !== null) { strip(mat, () => [a, y], () => [b, y], i0, Math.max(i0 + 1, i)); i0 = null; } } };
   const asphalt = roadMat(p.asphalt || '#3a3c40'), white = roadMat('#e8e6e1', { r: .8 }), yel = roadMat('#e0b030', { r: .8 }), shoulderM = roadMat('#55575b'), dirt = roadMat('#7b7364'), conc = roadMat('#a7a49d', { r: .9 }), curb = roadMat('#c7c4bd', { r: .9 });
+  white.userData.clay = yel.userData.clay = 'lines'; asphalt.userData.clay = shoulderM.userData.clay = 'asphalt'; conc.userData.clay = curb.userData.clay = dirt.userData.clay = 'curb';
   strip(asphalt, () => [-hw, lift], () => [hw, lift]);
   if (sh > 0) both(shoulderM, hw, hw + sh, lift - 0.005);
   // pintura
@@ -4965,7 +4998,7 @@ function roadFollow(road, obj, kmh, lane, dir, startPct, fStart, silent) {
   if (silent) return; commit(); tlDirty = true; pathVer = -1; bump(); toast(`${obj.name} anda pela estrada: frames ${f0}–${out.px[out.px.length - 1].f}`);
 }
 function initRoadUI() {
-  insp.addEventListener('change', e => { const o = sel && getObj(sel); if (o && e.target.id === 'consGround') { o.cons.ground = e.target.checked ? undefined : false; bump(); commit(); } if (o && e.target.id === 'camHid') { o.camHidden = e.target.checked || undefined; bump(); commit(); } if (o && e.target.id === 'frameSel') { const [x, y] = e.target.value.split(',').map(Number); o.cons.frameX = x; o.cons.frameY = y; if (!o.cons.aim) toast('O enquadramento nos terços funciona quando a câmera mira um objeto (Mirar em)'); bump(); commit(); } });
+  insp.addEventListener('change', e => { const o = sel && getObj(sel); if (o && e.target.id === 'consGround') { o.cons.ground = e.target.checked ? undefined : false; bump(); commit(); } if (o && e.target.id === 'clayHero') { o.clayHero = e.target.checked || undefined; bump(); commit(); if (typeof renderClayBar === 'function') renderClayBar(); } if (o && e.target.id === 'camHid') { o.camHidden = e.target.checked || undefined; bump(); commit(); } if (o && e.target.id === 'frameSel') { const [x, y] = e.target.value.split(',').map(Number); o.cons.frameX = x; o.cons.frameY = y; if (!o.cons.aim) toast('O enquadramento nos terços funciona quando a câmera mira um objeto (Mirar em)'); bump(); commit(); } });
   insp.addEventListener('click', e => {
     const o = sel && getObj(sel), b = e.target.closest('button'); if (!o || !b || o.type !== 'roadpath') return;
     if (b.dataset.rpre) { const pr = ROAD_PRESETS[b.dataset.rpre]; o.params.pts = pr.pts.map(a => a.slice()); o.params.closed = !!pr.closed; o.params.bridge = !pr.noBridge; roadSelPt = -1; rebuildRoad(o, true); }
@@ -5616,7 +5649,7 @@ function commScene() {
   const rnd = mulberry(77);
   // árvores em faixas a 18–90 m da pista (parallax de velocidade), fora do rio
   for (let i = 0, n = 0; i < 900 && n < 140; i++) { const x = -120 + rnd() * 1250, z = -700 + rnd() * 980, d = distRoad(x, z); if (d < 18 || d > 95) continue; const rx = x - 640, rz = z - 130, along = rx * Math.sin(-62 * DEG) + rz * Math.cos(-62 * DEG), across = rx * Math.cos(-62 * DEG) - rz * Math.sin(-62 * DEG); if (Math.abs(across) < 20 && Math.abs(along) < 450) continue; const t = rnd() < 0.6 ? 'pine' : 'tree'; add(t, { name: 'Árvore', params: Object.assign(defaultParams(t), { height: 9 + rnd() * 10, seed: (rnd() * 999) | 0 }), base: { px: x, py: gnd(x, z) - 0.1, pz: z, ry: rnd() * 360 } }); n++; }
-  const car = add('realcar', { name: 'Porsche 911 (herói)', params: Object.assign(carDefaults('p911'), { modelName: CAR_DB.p911.name, color: '#c8102e' }) });
+  const car = add('realcar', { name: 'Porsche 911 (herói)', params: Object.assign(carDefaults('p911'), { modelName: CAR_DB.p911.name, color: '#c8102e' }) }); car.clayHero = true;
   buildRuntime(car);
   { // o carro larga no mesmo ponto de antes (0,0,-420); a estrada só continua para trás até o horizonte
     const { S, len } = sampleRoad(road.params); let best = 0, bd = 1e9; for (const q of S) { const d = q.x * q.x + (q.z + 420) ** 2; if (d < bd) { bd = d; best = q.s; } }
@@ -5946,7 +5979,7 @@ function buildAvenueLoop() {
   // ---------- herói ----------
   const hero = []; for (let f = 0; f < N; f++) hero.push({ f, x: heroLat(f / fps), z: zH(f / fps) });
   let hits = 0; for (const h of hero) for (const c of traffic) { const t = h.f / fps; if (Math.abs(h.x - laneX(c.lane)) < 2.45 && Math.abs(zr(c, t)) < (LH + c.L) / 2 + 0.5) hits++; }
-  const car = add('realcar', { name: 'Carro herói (trocar na IA)', params: Object.assign(carDefaults('taycan'), { modelName: CAR_DB.taycan.name, color: '#c8102e' }) });
+  const car = add('realcar', { name: 'Carro herói (trocar na IA)', params: Object.assign(carDefaults('taycan'), { modelName: CAR_DB.taycan.name, color: '#c8102e' }) }); car.clayHero = true;
   writeSamples(car, 'px', hero.map(h => ({ f: h.f, v: h.x })), 'every'); writeSamples(car, 'pz', hero.map(h => ({ f: h.f, v: h.z })), 'every');
   const yaw = hero.map(h => { const t = h.f / fps, e = 0.5 / fps; return Math.atan2(heroLat(t + e) - heroLat(t - e), 2 * e * VH) / DEG; });
   writeSamples(car, 'ry', hero.map((h, i) => ({ f: h.f, v: yaw[i] })), 'every');
@@ -6077,6 +6110,33 @@ function applyDevice(force) {
 addEventListener('resize', () => applyDevice());
 addEventListener('orientationchange', () => setTimeout(() => applyDevice(true), 200));
 addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.dataset.sheet) uiSheet(''); }, true);
+
+/* ============================================================
+   Painel "Cores do Clay" — aparece no viewport quando o modo Clay está ativo
+   ============================================================ */
+const clayBar = document.createElement('div'); clayBar.id = 'clayBar';
+$('#vpwrap').appendChild(clayBar);
+let _clayKey = '';
+function renderClayBar(force) {
+  const on = renderMode === 'clay' && !document.body.classList.contains('cinema') && typeof project !== 'undefined' && project;
+  clayBar.style.display = on ? '' : 'none'; if (!on) return;
+  const st = project.settings.clay || {}, heroes = project.objects.filter(o => o.clayHero);
+  const key = JSON.stringify(st) + heroes.map(o => o.id + o.name).join() + (sel || '') + clayBar.classList.contains('min');
+  if (key === _clayKey && !force) return; _clayKey = key;
+  const so = sel && getObj(sel);
+  clayBar.innerHTML = `<div class="cbh"><b>Cores do Clay</b><span class="grow"></span><button class="icon" data-cb="reset" title="Voltar às cores padrão">↺</button><button class="icon" data-cb="min" title="Recolher">${clayBar.classList.contains('min') ? '▾' : '▴'}</button></div>
+    <div class="cbb">${CLAY_LABELS.map(([k, lb]) => `<label class="cbr"><input type="color" data-ck="${k}" value="${clayCol(k)}"><span>${lb}</span></label>`).join('')}
+    <div class="cbhero">${heroes.length ? 'Principal: ' + heroes.map(o => esc(o.name)).join(', ') : 'Nenhum objeto marcado como principal'}</div>
+    ${so && so.type !== 'camera' ? `<button data-cb="hero">${so.clayHero ? '✕ Tirar "' + esc(so.name) + '" do destaque' : '★ Marcar "' + esc(so.name) + '" como principal'}</button>` : '<div class="cbhint">Selecione um objeto para marcá-lo como principal</div>'}</div>`;
+}
+clayBar.addEventListener('input', e => { const k = e.target.dataset.ck; if (!k) return; project.settings.clay = Object.assign({}, project.settings.clay || {}, { [k]: e.target.value }); bump(); });
+clayBar.addEventListener('change', e => { if (e.target.dataset.ck) commit(); });
+clayBar.addEventListener('click', e => { const b = e.target.closest('[data-cb]'); if (!b) return; const k = b.dataset.cb;
+  if (k === 'min') clayBar.classList.toggle('min');
+  else if (k === 'reset') { project.settings.clay = {}; commit(); bump(); }
+  else if (k === 'hero') { const o = sel && getObj(sel); if (o) { o.clayHero = o.clayHero ? undefined : true; commit(); bump(); renderInspector(); } }
+  renderClayBar(true); });
+setInterval(() => renderClayBar(), 300);
 
 init();
 try { applyDevice(true); } catch (e) { console.warn('responsivo', e); }
