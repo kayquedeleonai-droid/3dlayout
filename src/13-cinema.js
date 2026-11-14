@@ -131,7 +131,7 @@ function drawGuides(ctx, r, y0) {
   if (guideMode === 'safe') { ctx.setLineDash([5, 4]); ctx.strokeStyle = 'rgba(242,163,58,.55)'; ctx.strokeRect(X(.05), Y(.05), r.w * .9, r.h * .9); ctx.strokeStyle = 'rgba(122,167,255,.6)'; ctx.strokeRect(X(.1), Y(.1), r.w * .8, r.h * .8); ctx.setLineDash([]); ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.font = '10px Inter'; ctx.fillText('action safe 90%', X(.05) + 4, Y(.05) + 12); ctx.fillText('title safe 80%', X(.1) + 4, Y(.1) + 12); }
   if (guideMode === 'frames') {
     const A = r.w / r.h; ctx.font = '10px Inter'; ctx.fillStyle = 'rgba(255,255,255,.6)';
-    for (const [lab, a, col] of [['9:16', 9 / 16, 'rgba(122,167,255,.7)'], ['1:1', 1, 'rgba(108,200,106,.7)'], ['4:5', 0.8, 'rgba(175,123,232,.7)'], ['2.39:1', 2.39, 'rgba(242,163,58,.7)']]) {
+    for (const [lab, a, col] of [['9:16', 9 / 16, 'rgba(122,167,255,.7)'], ['1:1', 1, 'rgba(108,200,106,.7)'], ['4:5', 0.8, 'rgba(175,123,232,.7)'], ['21:9', 21 / 9, 'rgba(90,200,200,.7)'], ['2.39:1', 2.39, 'rgba(242,163,58,.7)']]) {
       let w = r.w, h = r.h; if (a < A) w = r.h * a; else h = r.w / a; if (Math.abs(a - A) < 0.02) continue;
       ctx.strokeStyle = col; ctx.strokeRect(X(.5) - w / 2, Y(.5) - h / 2, w, h); ctx.fillStyle = col; ctx.fillText(lab, X(.5) - w / 2 + 4, Y(.5) - h / 2 + 12);
     }

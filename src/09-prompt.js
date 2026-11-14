@@ -43,7 +43,7 @@ OUTPUT: reply with ONLY one JSON object, no prose, shaped like:
 {
  "name": "short shot name",
  "duration_s": 8,
- "aspect": "16:9",                       // one of 16:9, 9:16, 1:1, 4:5, 2.39:1, 4:3
+ "aspect": "16:9",                       // one of 16:9, 9:16, 1:1, 4:5, 21:9, 2.39:1, 4:3
  "objects": [
   {"id":"hero","type":"sportcar","name":"Porsche 911","params":{"color":"#b8bcc2"},
    "x":-1.75,"y":0,"z":-60,"heading":0,"scale":1,
@@ -124,7 +124,7 @@ function localSpec(text) {
   else { Object.assign(cam, { name: `Travelling ${lens}mm`, follow: v > 0 ? 'hero' : null, path: v > 0 ? [{ t: 0, x: sideX * side, y: camH, z: near * 0.6 }, { t: dur, x: sideX * side, y: camH, z: -near * 0.4 }] : [{ t: 0, x: hero.x + sideX, y: camH, z: hero.z - 4 }, { t: dur, x: hero.x + sideX, y: camH, z: hero.z + 4 }] }); }
   const cams = [cam];
   if (kind === 'car' && !has(/aerial|a[eé]re|drone shot/)) cams.push({ id: 'cam2', name: 'Aérea de apoio 24mm', lens_mm: 24, follow: 'hero', aim: 'hero', aim_height: 0.5, path: [{ t: 0, x: 10, y: 14, z: -14 }, { t: dur, x: 6, y: 18, z: 6 }], ease: 'inout' });
-  return { name: text.slice(0, 48), duration_s: dur, aspect: has(/vertical|9:16|reels|stories|tiktok/) ? '9:16' : has(/2\.39|scope|anam[oó]rf|cinemascope/) ? '2.39:1' : '16:9', objects, cameras: cams, notes: 'Gerado pelo interpretador local (palavras-chave).' };
+  return { name: text.slice(0, 48), duration_s: dur, aspect: has(/vertical|9:16|reels|stories|tiktok/) ? '9:16' : has(/21:9|21x9|ultrawide|ultra-wide/) ? '21:9' : has(/2\.39|scope|anam[oó]rf|cinemascope/) ? '2.39:1' : '16:9', objects, cameras: cams, notes: 'Gerado pelo interpretador local (palavras-chave).' };
 }
 
 /* ---------- spec → projeto ---------- */
@@ -150,7 +150,7 @@ function applySpec(spec, mode) {
   const oldRefs = {}; if (mode === 'edit') for (const o of project.objects) if (o.refs) oldRefs[o.id] = o.refs;
   if (mode !== 'add') { loadProjectData(newProject()); }
   const fps = project.fps;
-  if (mode !== 'add') { project.duration = clamp(Math.round((+spec.duration_s || 8) * fps), 24, 24 * 120); if (['16:9', '9:16', '1:1', '4:5', '2.39:1', '4:3'].includes(spec.aspect)) project.aspect = spec.aspect; if (spec.name) project.name = String(spec.name).slice(0, 60); }
+  if (mode !== 'add') { project.duration = clamp(Math.round((+spec.duration_s || 8) * fps), 24, 24 * 120); if (['16:9', '9:16', '1:1', '4:5', '21:9', '2.39:1', '4:3'].includes(spec.aspect)) project.aspect = spec.aspect; if (spec.name) project.name = String(spec.name).slice(0, 60); }
   const idMap = {}, made = [];
   const eps = { px: 0.004, py: 0.004, pz: 0.004, ry: 0.08 };
   for (const so of (spec.objects || [])) {
