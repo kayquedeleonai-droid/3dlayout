@@ -15,7 +15,7 @@ $('#bExport').onclick = () => {
     <label>Resolução</label><select id="exRes"><option value="540">540p</option><option value="720">720p</option><option value="1080" selected>1080p</option><option value="1440">1440p</option><option value="2160">4K</option></select>
     <label>Simular óptica</label><label style="display:flex;gap:6px;align-items:center;color:var(--tx)"><input type="checkbox" id="exFX" checked> DOF, distorção e vinheta da lente (só Playblast/Clay)</label>
     <label>Frames</label><span><input id="exF0" type="number" value="0" style="width:70px"> até <input id="exF1" type="number" value="${project.duration}" style="width:70px"> <span class="hint">(${project.fps} fps, ${project.aspect})</span></span>
-    </div><div class="hint" id="exHint" style="margin-top:10px">O vídeo é gravado em tempo real a partir da câmera escolhida. Mantenha esta aba visível durante a exportação.</div>
+    </div><div class="hint" id="exHint" style="margin-top:10px">O vídeo é renderizado quadro a quadro (MP4 H.264) a partir da câmera ou da edição escolhida. Mantenha esta aba aberta durante a exportação.</div>
     <div class="prog" id="exProg" style="display:none"><i></i></div>
     <div class="btnrow" style="margin-top:12px"><button class="pri" id="exGo">Exportar</button></div>`, m => {
     m.querySelector('#exPass').value = renderMode;
@@ -37,31 +37,80 @@ $('#bExport').onclick = () => {
 };
 const safeName = s => String(s).replace(/[^\w\-]+/g, '_');
 function setProg(u, label) { const p = $('#exProg i'); if (p) p.style.width = (u * 100).toFixed(1) + '%'; const h = $('#exHint'); if (h && label) h.textContent = label; }
+// Vídeo: codifica QUADRO A QUADRO com WebCodecs (H.264) e monta o MP4 — todos os quadros garantidos,
+// sem depender de tempo real. MediaRecorder fica só como reserva para navegadores sem WebCodecs.
+const MP4MUX_URL = 'https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.2/build/mp4-muxer.mjs';
 async function exportVideo(camObj, pass, res, f0, f1, tag) {
+  const [W, H] = outSize(res);
+  const name = `${safeName(project.name)}_${camObj === 'cut' ? 'edicao' : safeName(camObj.name)}_${pass}`;
+  if (typeof VideoEncoder !== 'undefined' && typeof VideoFrame !== 'undefined') {
+    let blob = null;
+    try { blob = await exportVideoWC(camObj, pass, W, H, f0, f1, tag); }
+    catch (err) { console.warn('WebCodecs falhou, usando gravação em tempo real', err); toast('Codificador quadro a quadro indisponível — usando gravação em tempo real', 4000); }
+    if (blob) { setProg(1, `Pronto: ${(blob.size / 1e6).toFixed(1)} MB · ${f1 - f0 + 1} quadros · ${W}×${H} MP4`); await saveFile(name + '.mp4', blob); return; }
+  }
+  await exportVideoMR(camObj, pass, W, H, f0, f1, tag, name);
+}
+const camAtF = (camObj, f) => getObj(camObj === 'cut' ? shotCamAt(f) : camObj.id);
+async function exportVideoWC(camObj, pass, W, H, f0, f1, tag) {
+  const { Muxer, ArrayBufferTarget } = await import(MP4MUX_URL);
+  const fps = project.fps, bitrate = Math.min(60e6, Math.round(W * H * fps * 0.2));
+  let cfg = null;
+  for (const codec of ['avc1.640033', 'avc1.640028', 'avc1.4d0033', 'avc1.42003e']) {
+    const c = { codec, width: W, height: H, bitrate, framerate: fps, avc: { format: 'avc' } };
+    const ok = await VideoEncoder.isConfigSupported(c).catch(() => ({ supported: false })); if (ok.supported) { cfg = c; break; }
+  }
+  if (!cfg) throw new Error('H.264 não suportado neste navegador');
+  const muxer = new Muxer({ target: new ArrayBufferTarget(), video: { codec: 'avc', width: W, height: H, frameRate: fps }, fastStart: 'in-memory' });
+  let encErr = null;
+  const enc = new VideoEncoder({ output: (chunk, meta) => muxer.addVideoChunk(chunk, meta), error: e => { encErr = e; } });
+  enc.configure(cfg);
+  const rend = makeRenderer(W, H), keepFrame = curFrame; exporting = true; setHelpersVisible(false);
+  try {
+    applyFrame(f0); renderScene(rend, camAtF(camObj, f0) && rt.get(camAtF(camObj, f0).id).rig.cam, pass, W, H); // compila shaders
+    const us = 1e6 / fps;
+    for (let f = f0; f <= f1; f++) {
+      if (encErr) throw encErr;
+      const co = camAtF(camObj, f); applyFrame(f); renderCamera(rend, co, rt.get(co.id).rig.cam, pass, W, H, 0, 0, f);
+      const vf = new VideoFrame(rend.domElement, { timestamp: Math.round((f - f0) * us), duration: Math.round(us) });
+      enc.encode(vf, { keyFrame: (f - f0) % (fps * 2) === 0 }); vf.close();
+      while (enc.encodeQueueSize > 6) await sleep(4);
+      if ((f - f0) % 3 === 0) { setProg((f - f0) / Math.max(1, f1 - f0), `${tag}Renderizando quadro ${f}/${f1} — ${W}×${H} ${pass}`); await sleep(0); }
+    }
+    await enc.flush(); if (encErr) throw encErr;
+    muxer.finalize();
+    return new Blob([muxer.target.buffer], { type: 'video/mp4' });
+  } finally {
+    try { enc.state !== 'closed' && enc.close(); } catch (e) { }
+    rend.dispose(); rend.forceContextLoss?.(); exporting = false; setFrame(keepFrame);
+  }
+}
+// reserva: gravação em tempo real (o canvas precisa estar no documento para o navegador capturar os quadros)
+async function exportVideoMR(camObj, pass, W, H, f0, f1, tag, name) {
   if (typeof MediaRecorder === 'undefined') throw new Error('Este navegador não suporta gravação de vídeo');
-  const [W, H] = outSize(res), rend = makeRenderer(W, H), camFor = f => rt.get(camObj === 'cut' ? shotCamAt(f) : camObj.id).rig.cam; let cam = camFor(f0);
+  const rend = makeRenderer(W, H), el = rend.domElement;
+  el.style.cssText = 'position:fixed;left:0;top:0;width:4px;height:4px;opacity:.01;pointer-events:none;z-index:-1'; document.body.appendChild(el);
   const types = ['video/mp4;codecs=avc1.640028', 'video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
   const mime = types.find(t => MediaRecorder.isTypeSupported(t)); if (!mime) throw new Error('Nenhum codec de vídeo disponível');
-  const stream = rend.domElement.captureStream(0), track = stream.getVideoTracks()[0];
+  const stream = el.captureStream(project.fps), track = stream.getVideoTracks()[0];
   const recd = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: Math.round(W * H * project.fps * 0.22) });
   const chunks = []; recd.ondataavailable = e => e.data.size && chunks.push(e.data);
   const done = new Promise(r => recd.onstop = r);
-  exporting = true; const keepFrame = curFrame;
-  setHelpersVisible(false);
-  // pré-render para compilar shaders
-  applyFrame(f0); renderScene(rend, cam, pass, W, H); await sleep(60);
-  recd.start();
-  const spf = 1000 / project.fps; let t0 = performance.now();
+  exporting = true; const keepFrame = curFrame; setHelpersVisible(false);
+  applyFrame(f0); renderScene(rend, rt.get(camAtF(camObj, f0).id).rig.cam, pass, W, H); await sleep(80);
+  recd.start(250);
+  const spf = 1000 / project.fps, t0 = performance.now();
   for (let f = f0; f <= f1; f++) {
-    applyFrame(f); cam = camFor(f); renderCamera(rend, getObj(camObj === 'cut' ? shotCamAt(f) : camObj.id), cam, pass, W, H, 0, 0, f); if (track.requestFrame) track.requestFrame();
-    setProg((f - f0) / Math.max(1, f1 - f0), `${tag}Renderizando frame ${f}/${f1} — ${W}×${H} ${pass}`);
-    const target = t0 + (f - f0 + 1) * spf, wait = target - performance.now(); if (wait > 0) await sleep(wait);
+    const co = camAtF(camObj, f); applyFrame(f); renderCamera(rend, co, rt.get(co.id).rig.cam, pass, W, H, 0, 0, f);
+    setProg((f - f0) / Math.max(1, f1 - f0), `${tag}Gravando quadro ${f}/${f1} — ${W}×${H} ${pass}`);
+    const wait = t0 + (f - f0 + 1) * spf - performance.now(); await new Promise(r => requestAnimationFrame(() => setTimeout(r, Math.max(0, wait))));
   }
-  await sleep(spf); recd.stop(); await done; track.stop(); rend.dispose(); rend.forceContextLoss?.();
+  await sleep(spf * 2); recd.stop(); await done; track.stop(); el.remove(); rend.dispose(); rend.forceContextLoss?.();
   exporting = false; setFrame(keepFrame);
   const ext = mime.includes('mp4') ? 'mp4' : 'webm', blob = new Blob(chunks, { type: mime.split(';')[0] });
+  if (!blob.size) throw new Error('o navegador não gravou nenhum quadro — tente outro navegador (Chrome/Edge recentes)');
   setProg(1, `Pronto: ${(blob.size / 1e6).toFixed(1)} MB (${ext.toUpperCase()})`);
-  await saveFile(`${safeName(project.name)}_${camObj === 'cut' ? 'edicao' : safeName(camObj.name)}_${pass}.${ext}`, blob);
+  await saveFile(`${name}.${ext}`, blob);
 }
 async function exportPNG(camObj, pass, res) {
   const [W, H] = outSize(res), rend = makeRenderer(W, H), cam = rt.get(camObj.id).rig.cam;
