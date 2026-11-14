@@ -447,7 +447,7 @@ function buildBuilding(p, parent, x = 0, z = 0) {
   box(p.width + 0.3, 0.5, p.depth + 0.3, M(shade(p.color, 0.8)), 0, H + 0.25, 0, g);
   return g;
 }
-def('building', { cat: 'Cenário', label: 'Prédio', icon: '🏢', params: [P('width', 'Largura', 'num', 14, { min: 3, max: 80, step: .5 }), P('depth', 'Profundidade', 'num', 14, { min: 3, max: 80, step: .5 }), P('floors', 'Andares', 'int', 8, { min: 1, max: 80, step: 1 }), P('floorH', 'Pé-direito', 'num', 3.2, { min: 2.5, max: 6, step: .1 }), P('color', 'Fachada', 'color', '#b8b2a6'), P('glass', 'Vidro', 'color', '#2a3746'), P('style', 'Estilo', 'select', 'faixas', { opts: [['faixas', 'Faixas'], ['grade', 'Grade']] })], build(p) { const g = new THREE.Group(); buildBuilding(p, g); return g; } });
+def('building', { cat: 'Cenário', label: 'Prédio', icon: '🏢', params: [P('width', 'Largura', 'num', 14, { min: 3, max: 80, step: .5 }), P('depth', 'Profundidade', 'num', 14, { min: 3, max: 80, step: .5 }), P('floors', 'Andares', 'int', 8, { min: 1, max: 80, step: 1 }), P('floorH', 'Pé-direito', 'num', 3.2, { min: 2.5, max: 6, step: .1 }), P('color', 'Fachada', 'color', '#b8b2a6'), P('glass', 'Vidro', 'color', '#2a3746'), P('style', 'Estilo', 'select', 'faixas', { opts: [['faixas', 'Faixas'], ['grade', 'Grade']] })], build(p) { const g = new THREE.Group(); buildBuilding(p, g); mergeStatic(g); return g; } });
 def('house', {
   cat: 'Cenário', label: 'Casa', icon: '🏠', params: [P('width', 'Largura', 'num', 9, { min: 4, max: 30, step: .5 }), P('depth', 'Profundidade', 'num', 8, { min: 4, max: 30, step: .5 }), P('height', 'Altura parede', 'num', 3, { min: 2.4, max: 8, step: .1 }), P('wall', 'Parede', 'color', '#e8e1d4'), P('roof', 'Telhado', 'color', '#9a4a32')],
   build(p) {

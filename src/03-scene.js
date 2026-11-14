@@ -13,8 +13,9 @@ const hemi = new THREE.HemisphereLight('#dfe9f5', '#5a5248', 1.1); scene.add(hem
 const sun = new THREE.DirectionalLight('#ffffff', 1.8); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
 Object.assign(sun.shadow.camera, { left: -70, right: 70, top: 70, bottom: -70, near: 1, far: 400 }); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03;
 scene.add(sun, sun.target);
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshStandardMaterial({ color: '#8d9094', roughness: 1, metalness: 0 }));
-ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; ground.userData.ground = true; scene.add(ground);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(1, 1, 96, 96), // subdividido: triângulos gigantes perdem precisão de profundidade e o chão "vence" o asfalto
+  new THREE.MeshStandardMaterial({ color: '#8d9094', roughness: 1, metalness: 0 }));
+ground.rotation.x = -Math.PI / 2; ground.position.y = -0.02; ground.receiveShadow = true; ground.userData.ground = true; scene.add(ground);
 const grid = new THREE.GridHelper(200, 200, 0x55595f, 0x3d4046); grid.position.y = 0.005; grid.material.transparent = true; grid.material.opacity = 0.35; scene.add(grid);
 const editorCam = new THREE.PerspectiveCamera(45, 1, 0.05, 6000); editorCam.position.set(14, 9, 18);
 const orbit = new OrbitControls(editorCam, renderer.domElement); orbit.enableDamping = true; orbit.dampingFactor = 0.12; orbit.target.set(0, 1, 0);
