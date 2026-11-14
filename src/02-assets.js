@@ -96,6 +96,12 @@ function animVehicle(rig, c) {
   for (const w of rig.wheels) w.rotation.x = c.dist / rig.r;
   const s = Math.abs(c.speed) > 0.3 ? clamp(Math.atan(c.yawRate * rig.wb / c.speed), -0.6, 0.6) : 0;
   for (const s2 of rig.steer) s2.rotation.y = s;
+  // dinâmica da carroceria: rolagem ≈ 0,45°/(m/s²) de aceleração lateral, arfagem ≈ 0,3°/(m/s²) longitudinal
+  if (rig.bodyRoll) {
+    const aLat = c.speed * c.yawRate, aLong = c.acc || 0;
+    rig.bodyRoll.rotation.z = clamp(aLat * 0.0079, -0.075, 0.075);
+    rig.bodyRoll.rotation.x = clamp(-aLong * 0.0052, -0.05, 0.05);
+  }
 }
 const carParams = (st, col, L, W, H) => [P('style', 'Estilo', 'select', st, { opts: [['sedan', 'Sedã'], ['suv', 'SUV'], ['sport', 'Esportivo']] }), P('color', 'Cor', 'color', col), P('length', 'Comprimento (m)', 'num', L, { min: 3.4, max: 5.6, step: .05 }), P('width', 'Largura (m)', 'num', W, { min: 1.6, max: 2.1, step: .01 }), P('height', 'Altura (m)', 'num', H, { min: 1.1, max: 2.0, step: .01 }), P('vmax', 'Vel. máx (km/h)', 'num', 180, { min: 20, max: 350, step: 5 })];
 def('car', { cat: 'Veículos', label: 'Carro sedã', icon: '🚗', pilot: 'car', params: carParams('sedan', '#b03a2e', 4.7, 1.83, 1.45), build: buildCar, anim: animVehicle });

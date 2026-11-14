@@ -73,7 +73,7 @@ function buildRealCarTraced(p) {
       rig.wheels.push(w); if (front2) rig.steer.push(piv);
     }
   }
-  g.userData.rig = rig; return g;
+  wrapCarBody(g, rig); g.userData.rig = rig; return g;
 }
 const CAR_OPTS = [...Object.entries(CAR_DB).map(([k, v]) => [k, v.name]), ['custom', 'Personalizado / outro modelo']];
 function carDefaults(k) { const d = CAR_DB[k] || CAR_DB.p911; return { model: k, body: d.body, color: d.color, length: d.L, width: d.W, height: d.H, wheelbase: d.wb, foverhang: d.fo, trackF: d.tf, trackR: d.tr, clearance: d.clr, tireF: d.tireF, tireR: d.tireR }; }

@@ -328,7 +328,13 @@ function buildCarLoft(p) {
     }
   }
   buildCarInterior(g, p, geo, mats, { W, H, L, wb, zfa, clr });
-  g.userData.rig = rig; return g;
+  wrapCarBody(g, rig); g.userData.rig = rig; return g;
+}
+// separa a carroceria (tudo menos as rodas) num grupo que rola/arfa com as acelerações
+function wrapCarBody(g, rig) {
+  const piv = new Set(rig.wheels.map(w => w.parent)), body = new THREE.Group(); body.name = 'carroceria';
+  for (const ch of [...g.children]) if (!piv.has(ch)) body.add(ch);
+  g.add(body); rig.bodyRoll = body;
 }
 // posição do motorista a partir das medidas reais (usado pelo interior e pelo seatInCar)
 function carCabin(p) {

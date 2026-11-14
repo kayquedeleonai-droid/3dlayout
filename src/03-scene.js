@@ -203,7 +203,7 @@ function motion(o) {
 function animCtx(o, f) {
   if (pilot.on && pilot.id === o.id) return { t: f / project.fps + pilot.tExtra, dist: pilot.s.dist, speed: pilot.s.v, yawRate: pilot.s.yawRate || 0, vy: pilot.s.vy || 0, y: pilot.s.pos.y };
   const c = motion(o), i = clamp(Math.floor(f), 0, c.N - 1), j = Math.min(i + 1, c.N - 1), u = clamp(f - i, 0, 1);
-  return { t: f / project.fps, dist: lerp(c.dist[i], c.dist[j], u), speed: lerp(c.speed[i], c.speed[j], u), yawRate: lerp(c.yawRate[i], c.yawRate[j], u), vy: lerp(c.vy[i], c.vy[j], u), y: lerp(c.y[i], c.y[j], u) };
+  const i0 = Math.max(0, i - 2), i1 = Math.min(c.N - 1, i + 2); return { t: f / project.fps, dist: lerp(c.dist[i], c.dist[j], u), speed: lerp(c.speed[i], c.speed[j], u), yawRate: lerp(c.yawRate[i], c.yawRate[j], u), vy: lerp(c.vy[i], c.vy[j], u), y: lerp(c.y[i], c.y[j], u), acc: i1 > i0 ? (c.speed[i1] - c.speed[i0]) * project.fps / (i1 - i0) : 0 };
 }
 let _roadRelief = false;
 function applyFrame(f) {
