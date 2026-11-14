@@ -5681,13 +5681,16 @@ function applyFlatUI() {
    o esqueleto do modelo é "mirado" na direção de cada segmento do rig.
    ============================================================ */
 const HUMAN_FILES = { m: 'models/Superhero_Male.glb', f: 'models/Superhero_Female.glb' };
+// reserva para ambientes que não servem .glb (ex.: artifact): o mesmo modelo em base64 dentro de um .js
+function loadHumanB64(k) { return new Promise((res, rej) => { window.__humanGLB = window.__humanGLB || {}; if (window.__humanGLB[k]) return res(window.__humanGLB[k]); const sc = document.createElement('script'); sc.src = 'models/human_' + k + '.js'; sc.onload = () => window.__humanGLB[k] ? res(window.__humanGLB[k]) : rej(new Error('base64 vazio')); sc.onerror = rej; document.head.appendChild(sc); }).then(b64 => { const bin = atob(b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u.buffer; }); }
 const _humanTpl = {}; let _skelUtils = null;
 function loadHumanTpl(sex) {
   const k = sex === 'f' ? 'f' : 'm';
   if (_humanTpl[k]) return _humanTpl[k];
   return _humanTpl[k] = (async () => {
     if (!_skelUtils) _skelUtils = await import('three/addons/utils/SkeletonUtils.js');
-    const g = await (await gltfLoader()).loadAsync(HUMAN_FILES[k]);
+    const L = await gltfLoader(); let g;
+    try { g = await L.loadAsync(HUMAN_FILES[k]); } catch (e) { g = await L.parseAsync(await loadHumanB64(k), ''); }
     const root = g.scene; root.updateMatrixWorld(true);
     // altura real do modelo em repouso (topo do crânio) e altura da pelve
     let top = 0; root.traverse(n => { if (n.isSkinnedMesh) { n.computeBoundingBox(); const b = n.boundingBox.clone().applyMatrix4(n.matrixWorld); top = Math.max(top, b.max.y); } });
