@@ -5,7 +5,7 @@
    (hard mounts, tele, FPV, drone, Technocrane, cable cam, câmera na mão).
    ============================================================ */
 // rodovia: retas longas, curvas abertas, leve subida, ponte sobre um rio e descida suave — sempre no asfalto
-const COMM_ROAD = [[0, 0, -420], [0, 0, -180], [30, 0, -20], [130, 1, 110], [280, 1.5, 175], [430, 2.5, 190], [540, 6.5, 170], [640, 7, 130], [740, 6.5, 80], [840, 2.5, 20], [930, 1, -70], [990, 0.5, -190], [1010, 0, -330], [1010, 0, -620]];
+const COMM_ROAD = [[0, 0, -1700], [0, 0, -1100], [0, 0, -420], [0, 0, -180], [30, 0, -20], [130, 1, 110], [280, 1.5, 175], [430, 2.5, 190], [540, 6.5, 170], [640, 7, 130], [740, 6.5, 80], [840, 2.5, 20], [930, 1, -70], [990, 0.5, -190], [1010, 0, -330], [1010, 0, -620], [1010, 0, -1200], [1010, 0, -1700]]; // reta continua até sumir no horizonte nos dois sentidos
 // senta uma pessoa no banco do motorista com base nas dimensões REAIS do carro (H-point, bitola, entre-eixos, altura do teto)
 function seatInCar(person, car) {
   const cp = car.params || {}, Hc = +cp.height || 1.45, Wc = +cp.width || 1.8, Lc = +cp.length || 4.5, wb = +cp.wheelbase || Lc * 0.6, fo = +cp.foverhang || Lc * 0.2;
@@ -26,7 +26,7 @@ function commScene() {
   const road = add('roadpath', { name: 'Rodovia', params: Object.assign(defaultParams('roadpath'), { lanes: 2, laneW: 3.6, shoulder: 2.5, guard: true, center: 'double', bridge: true, delin: true, asphalt: '#323438' }) });
   road.params.pts = COMM_ROAD.map(a => a.slice()); buildRuntime(road);
   // montanhas só no horizonte: área plana grande em volta da estrada
-  add('terrain', { name: 'Montanhas ao fundo', params: Object.assign(defaultParams('terrain'), { size: 4200, height: 210, feature: 420, flat: 1500, color: '#6a7450', seed: 11 }), base: { px: 505, py: -0.06, pz: -120 } });
+  add('terrain', { name: 'Montanhas ao fundo', params: Object.assign(defaultParams('terrain'), { size: 4200, height: 210, feature: 420, flat: 2400, color: '#6a7450', seed: 11 }), base: { px: 505, py: -0.06, pz: -120 } });
   // rio sob a ponte
   add('plane', { name: 'Rio', params: Object.assign(defaultParams('plane'), { width: 26, depth: 900, color: '#3e6f8c' }), base: { px: 640, py: 0.04, pz: 130, ry: -62 } });
   applyFrame(0); conformAllTerrain(); applyFrame(0);
@@ -36,7 +36,10 @@ function commScene() {
   // árvores em faixas a 18–90 m da pista (parallax de velocidade), fora do rio
   for (let i = 0, n = 0; i < 900 && n < 140; i++) { const x = -120 + rnd() * 1250, z = -700 + rnd() * 980, d = distRoad(x, z); if (d < 18 || d > 95) continue; const rx = x - 640, rz = z - 130, along = rx * Math.sin(-62 * DEG) + rz * Math.cos(-62 * DEG), across = rx * Math.cos(-62 * DEG) - rz * Math.sin(-62 * DEG); if (Math.abs(across) < 20 && Math.abs(along) < 450) continue; const t = rnd() < 0.6 ? 'pine' : 'tree'; add(t, { name: 'Árvore', params: Object.assign(defaultParams(t), { height: 9 + rnd() * 10, seed: (rnd() * 999) | 0 }), base: { px: x, py: gnd(x, z) - 0.1, pz: z, ry: rnd() * 360 } }); n++; }
   const car = add('realcar', { name: 'Porsche 911 (herói)', params: Object.assign(carDefaults('p911'), { modelName: CAR_DB.p911.name, color: '#c8102e' }) });
-  buildRuntime(car); roadFollow(road, car, 260, 1, 1, 0, 0, true);
+  buildRuntime(car);
+  { // o carro larga no mesmo ponto de antes (0,0,-420); a estrada só continua para trás até o horizonte
+    const { S, len } = sampleRoad(road.params); let best = 0, bd = 1e9; for (const q of S) { const d = q.x * q.x + (q.z + 420) ** 2; if (d < bd) { bd = d; best = q.s; } }
+    roadFollow(road, car, 260, 1, 1, best / len * 100, 0, true); }
   const drv = add('person', { name: 'Piloto', params: Object.assign(defaultParams('person'), { look: 'clothes', height: 1.78, shirt: '#1d1e22', pants: '#1d1e22', pose: 'drive' }) });
   seatInCar(drv, car); buildRuntime(drv);
   car.speedProf = realisticProfile(car, { vMax: 215, v0: 170, aLat: 1.05, aAcc: 0.55, aBrk: 1.0 }); applySpeedProfile(car);

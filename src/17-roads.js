@@ -72,7 +72,9 @@ function buildRoadPath(p, g) {
     const k1 = strip(dirt, (s) => [E, yTop], (s) => [E + skirtW(s), isBridge(s) ? yTop - 0.9 : -s.y + 0.005]);
     const k2 = strip(dirt, (s) => [-E - skirtW(s), isBridge(s) ? yTop - 0.9 : -s.y + 0.005], (s) => [-E, yTop]); if (k1) k1.userData.skirt = true; if (k2) k2.userData.skirt = true;
     // laje do viaduto vista de baixo
-    let i0 = null; for (let i = 0; i < S.length; i++) { const b = isBridge(S[i]); if (b && i0 === null) i0 = i; if ((!b || i === S.length - 1) && i0 !== null) { strip(conc, () => [E, -0.9], () => [-E, -0.9], i0, Math.max(i0 + 1, i)); i0 = null; } }
+    // laje do viaduto: fundo + faces laterais (vigas de borda) sólidas dos dois lados — nunca dá para ver através do tabuleiro
+    const deckM = roadMat('#8e8b84', { r: .9, deck: 1 }); deckM.side = THREE.DoubleSide;
+    let i0 = null; for (let i = 0; i < S.length; i++) { const b = isBridge(S[i]); if (b && i0 === null) i0 = Math.max(0, i - 1); if ((!b || i === S.length - 1) && i0 !== null) { const a = i0, z = Math.min(S.length - 1, Math.max(i0 + 1, i)); strip(deckM, () => [E, -0.9], () => [-E, -0.9], a, z); strip(deckM, () => [E, yTop + 0.02], () => [E, -0.9], a, z, false); strip(deckM, () => [-E, -0.9], () => [-E, yTop + 0.02], a, z, false); i0 = null; } }
     // pilares
     const pm = roadMat('#9a978f', { r: .9 }); let next = 0;
     for (const s of S) if (isBridge(s) && s.s >= next) { next = s.s + 24; const ph = s.y - 0.9; for (const sx of p.lanes > 2 ? [-1, 1] : [0]) cyl(0.6, 0.6, ph, pm, s.x + s.rx * sx * hw * 0.5, ph / 2, s.z + s.rz * sx * hw * 0.5, g, 12); box(E * 2, 0.6, 1.4, pm, s.x, s.y - 1.2, s.z, g).rotation.y = Math.atan2(s.tx, s.tz); }
