@@ -7,11 +7,11 @@
 const lensRT = new WeakMap();
 const lensQuadScene = new THREE.Scene(), lensQuadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 const lensMat = new THREE.ShaderMaterial({
-  uniforms: { tColor: { value: null }, tDepth: { value: null }, near: { value: .1 }, far: { value: 1000 }, focus: { value: 5 }, cocK: { value: 0 }, maxR: { value: 20 }, k1: { value: 0 }, vig: { value: 0 }, ca: { value: 0 }, ov: { value: 1 }, res: { value: new THREE.Vector2(1, 1) } },
+  uniforms: { logD: { value: 0 }, tColor: { value: null }, tDepth: { value: null }, near: { value: .1 }, far: { value: 1000 }, focus: { value: 5 }, cocK: { value: 0 }, maxR: { value: 20 }, k1: { value: 0 }, vig: { value: 0 }, ca: { value: 0 }, ov: { value: 1 }, res: { value: new THREE.Vector2(1, 1) } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
   fragmentShader: `
-    uniform sampler2D tColor; uniform sampler2D tDepth; uniform float near, far, focus, cocK, maxR, k1, vig, ca, ov; uniform vec2 res; varying vec2 vUv;
-    float linZ(vec2 uv){ float d = texture2D(tDepth, uv).x; float z = d * 2.0 - 1.0; return 2.0 * near * far / (far + near - z * (far - near)); }
+    uniform float logD; uniform sampler2D tColor; uniform sampler2D tDepth; uniform float near, far, focus, cocK, maxR, k1, vig, ca, ov; uniform vec2 res; varying vec2 vUv;
+    float linZ(vec2 uv){ float d = texture2D(tDepth, uv).x; if (logD > 0.5) return exp2(d * log2(far + 1.0)) - 1.0; float z = d * 2.0 - 1.0; return 2.0 * near * far / (far + near - z * (far - near)); }
     float coc(vec2 uv){ float z = linZ(uv); return min(maxR, cocK * abs(z - focus) / max(z, 0.001)); }
     vec2 distort(vec2 uv){ vec2 a = vec2(res.x / res.y, 1.0); vec2 p = (uv - 0.5) * a; float r2 = dot(p, p); float rc = dot(0.5 * a, 0.5 * a); p *= (1.0 + k1 * r2) / (1.0 + k1 * rc); return p / a + 0.5; }
     void main(){
@@ -61,13 +61,20 @@ function setLensUniforms(o, cam, f, wpx, hpx) {
   U.k1.value = (L.d || 0.04) * (0.35 + 2.2 * wide * wide);
   U.vig.value = (L.v || 0.2) * (0.6 + 0.6 * wide); U.ca.value = (L.ca || 0.2) * (0.5 + wide);
   U.ov.value = L.ov ? 0.55 : 1.0; U.res.value.set(wpx, hpx);
+  U.logD.value = renderer.capabilities.logarithmicDepthBuffer ? 1 : 0;
+  // chaves globais (valem para todas as câmeras, viewport, Assistir filme e playblast)
+  const st = project.settings;
+  if (st.lensDof === false) U.cocK.value = 0;
+  if (st.lensCA === false) U.ca.value = 0;
+  if (st.lensDist === false) U.k1.value = 0;
+  if (st.lensVig === false) U.vig.value = 0;
 }
 function renderLens(rend, camObj, cam, mode, w, h, vx = 0, vy = 0, f = curFrame) {
   const pr = rend.getPixelRatio(), wpx = Math.max(2, Math.round(w * pr)), hpx = Math.max(2, Math.round(h * pr));
   const rt2 = getLensRT(rend, wpx, hpx);
   const prevNear = cam.near, prevFar = cam.far; cam.near = 0.05; cam.far = 2000; cam.updateProjectionMatrix();
   renderScene(rend, cam, mode, w, h, 0, 0, rt2);
-  setLensUniforms(camObj, cam, f, wpx, hpx);
+  setLensUniforms(camObj, cam, f, wpx, hpx); lensMat.uniforms.logD.value = rend.capabilities.logarithmicDepthBuffer ? 1 : 0;
   lensMat.uniforms.tColor.value = rt2.texture; lensMat.uniforms.tDepth.value = rt2.depthTexture;
   rend.setScissorTest(true); rend.setViewport(vx, vy, w, h); rend.setScissor(vx, vy, w, h);
   rend.render(lensQuadScene, lensQuadCam);
@@ -83,19 +90,24 @@ function renderCameraRaw(rend, camObj, cam, mode, w, h, vx = 0, vy = 0, f = curF
 }
 
 /* ---------- barra de lente na vista de câmera ---------- */
+const LENS_FX_KEYS = [['lensDof', 'Desfoque'], ['lensCA', 'Aberração cromática'], ['lensDist', 'Distorção'], ['lensVig', 'Vinheta']];
 let lensBarKey = '';
 function initLensBar() {
   const bar = document.createElement('div'); bar.id = 'lensBar'; $('#vpwrap').appendChild(bar);
   bar.addEventListener('change', e => { const o = getObj(bar.dataset.cam), t = e.target; if (!o || !t.dataset.lp) return; applyCamParam(o, t.dataset.lp, t.type === 'checkbox' ? t.checked : t.value); if (sel === o.id) renderInspector(); t.blur(); });
   bar.addEventListener('input', e => { const o = getObj(bar.dataset.cam), t = e.target; if (!o) return; if (t.dataset.lp === 'zoom') { setChannel(o, 'focal', curFrame, +t.value); const lb = bar.querySelector('#lbFocal'); if (lb) lb.textContent = t.value + 'mm'; } });
+  bar.addEventListener('click', e => { const x = e.target.closest('[data-lfx]'); if (!x) return; const k = x.dataset.lfx, st = project.settings;
+    if (k === 'clean') { const anyOn = LENS_FX_KEYS.some(([q]) => st[q] !== false); LENS_FX_KEYS.forEach(([q]) => st[q] = !anyOn); toast(anyOn ? 'Imagem limpa: sem desfoque, aberração, distorção e vinheta' : 'Efeitos de lente religados'); }
+    else st[k] = st[k] === false; lensBarKey = ''; commit(); bump(); });
   bar.addEventListener('click', e => { const o = getObj(bar.dataset.cam), b = e.target.closest('[data-lf]'); if (!o || !b) return; applyCamParam(o, 'focal', +b.dataset.lf); if (sel === o.id) renderInspector(); });
 }
 function updateLensBar(camView) {
   const bar = $('#lensBar'); if (!bar) return;
   const cid = camView ? viewCamId() : null, o = cid && getObj(cid);
   if (!o || o.type !== 'camera') { if (bar.style.display !== 'none') bar.style.display = 'none'; lensBarKey = ''; return; }
-  const focal = Math.round(getVal(o, 'focal', curFrame) * 10) / 10, key = cid + JSON.stringify(o.params) + focal + project.aspect;
+  const focal = Math.round(getVal(o, 'focal', curFrame) * 10) / 10; let key = cid + JSON.stringify(o.params) + focal + project.aspect;
   if (bar.style.display === 'none') bar.style.display = '';
+  key += LENS_FX_KEYS.map(([k]) => project.settings[k] !== false ? 1 : 0).join('');
   if (key === lensBarKey) return; lensBarKey = key;
   const p = o.params, L = LENS_SETS[p.lensSet] || LENS_SETS.generic, d = dofInfo(o, curFrame);
   const bodyP = ASSETS.camera.params.find(x => x.k === 'body'), lensP = ASSETS.camera.params.find(x => x.k === 'lensSet');
@@ -106,5 +118,6 @@ function updateLensBar(camView) {
       ${p.focusAuto === false || !o.cons.aim ? `<label class="lbt">Foco<input type="number" data-lp="focus" value="${p.focus}" step="0.1" min="0.2" style="width:58px">m</label>` : ''}
       <label class="lbt" title="Profundidade de campo, distorção, vinheta"><input type="checkbox" data-lp="lensFX" ${p.lensFX !== false ? 'checked' : ''}>Óptica</label></div>
     <div class="lbrow">${L.zoom ? `<input type="range" data-lp="zoom" min="${L.zoom[0]}" max="${L.zoom[1]}" step="1" value="${clamp(focal, L.zoom[0], L.zoom[1])}" style="flex:1"><b id="lbFocal" class="mono">${focal}mm</b>` : L.f.map(fl => `<button class="chip ${Math.abs(focal - fl) < 0.5 ? 'on' : ''}" data-lf="${fl}">${fl}</button>`).join('')}
-      <span class="lbinfo">${fmt(d.S.w, 1)}×${fmt(d.S.h, 1)}mm${d.S.sq > 1 ? ' · ' + d.S.sq + 'x' : ''} · nítido ${fmt(d.near, 2)}–${isFinite(d.far) ? fmt(d.far, 1) + 'm' : '∞'}</span></div>`;
+      <span class="lbinfo">${fmt(d.S.w, 1)}×${fmt(d.S.h, 1)}mm${d.S.sq > 1 ? ' · ' + d.S.sq + 'x' : ''} · nítido ${fmt(d.near, 2)}–${isFinite(d.far) ? fmt(d.far, 1) + 'm' : '∞'}</span></div>
+    <div class="lbrow lbfx" title="Valem para todas as câmeras e para o playblast">${LENS_FX_KEYS.map(([k, lb]) => `<button class="chip ${project.settings[k] !== false ? 'on' : ''}" data-lfx="${k}">${lb}</button>`).join('')}<button class="chip" data-lfx="clean" title="Desliga desfoque, aberração, distorção e vinheta: imagem limpa para a IA">Limpo p/ IA</button></div>`;
 }

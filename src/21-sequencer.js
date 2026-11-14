@@ -97,15 +97,17 @@ tlc.addEventListener('pointerdown', () => { seqLoop = null; }, true);
 /* ---------- ASSISTIR FILME: tela cheia, todos os planos em sequência ---------- */
 let cinema = false, _cinePrev = null;
 const cineBar = document.createElement('div'); cineBar.id = 'cineBar';
-cineBar.innerHTML = `<div class="row" style="margin-bottom:10px"><button id="cinePlay">❚❚</button><span id="cineTime" style="font-variant-numeric:tabular-nums;min-width:120px">00:00 / 00:00</span><span id="cineShot" style="flex:1;color:#cfd3d8"></span><label style="display:flex;gap:6px;align-items:center;color:#cfd3d8"><input type="checkbox" id="cineLoop" checked> repetir</label><button id="cineExit">✕ Sair (Esc)</button></div><div id="cineSegs"></div>`;
+cineBar.innerHTML = `<div class="row" style="margin-bottom:10px"><button id="cinePlay">❚❚</button><span id="cineTime" style="font-variant-numeric:tabular-nums;min-width:120px">00:00 / 00:00</span><span id="cineShot" style="flex:1;color:#cfd3d8"></span><label style="display:flex;gap:6px;align-items:center;color:#cfd3d8"><input type="checkbox" id="cineLoop" checked> repetir</label><label style="display:flex;gap:6px;align-items:center;color:#cfd3d8" title="Desfoque, aberração cromática, distorção e vinheta (desligue para uma imagem limpa para a IA)"><input type="checkbox" id="cineFX"> efeitos de lente</label><button id="cineExit">✕ Sair (Esc)</button></div><div id="cineSegs"></div>`;
 $('#vpwrap').appendChild(cineBar);
+cineBar.addEventListener('change', e => { if (e.target.id !== 'cineFX') return; const on = e.target.checked; LENS_FX_KEYS.forEach(([k]) => project.settings[k] = on); lensBarKey = ''; commit(); bump(); });
+function cineFXSync() { const c = $('#cineFX'); if (c) c.checked = LENS_FX_KEYS.some(([k]) => project.settings[k] !== false); }
 function cineSegs() {
   const S = project.shots && project.shots.length ? project.shots : [{ cam: project.activeCamera, start: 0, end: project.duration, name: (getObj(project.activeCamera) || {}).name || 'Câmera' }], D = project.duration + 1;
   $('#cineSegs').innerHTML = S.map((s, i) => `<div class="sg" data-f="${s.start}" style="flex:${s.end - s.start + 1}" title="${esc(s.name || '')}"><i style="background:${camColor(s.cam)}"></i>&nbsp;${i + 1} · ${esc(s.name || (getObj(s.cam) || {}).name || '')}</div>`).join('') + `<div id="cineHead"></div>`;
 }
 const mmss = (f) => { const s = f / project.fps; return String(Math.floor(s / 60)).padStart(2, '0') + ':' + (s % 60).toFixed(1).padStart(4, '0'); };
 function cineTick(f) {
-  if (!cinema) return; const D = project.duration + 1, segs = $('#cineSegs');
+  if (!cinema) return; cineFXSync(); const D = project.duration + 1, segs = $('#cineSegs');
   $('#cineHead').style.left = (f / D * segs.clientWidth) + 'px'; $('#cineTime').textContent = `${mmss(f)} / ${mmss(D)}`; $('#cinePlay').textContent = playing ? '❚❚' : '▶';
   const S = project.shots || [], i = S.findIndex(s => f >= s.start && f <= s.end); $('#cineShot').textContent = i >= 0 ? `Plano ${i + 1}/${S.length} · ${S[i].name || getObj(S[i].cam).name}` : '';
   if (!playing && f >= project.duration && $('#cineLoop').checked) { setFrame(0); togglePlay(true); }
