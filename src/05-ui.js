@@ -42,7 +42,7 @@ function addObject(type, opts = {}) {
   }
   if (type === 'null') o.base.py = 1;
   if (opts.id && !getObj(opts.id)) o.id = String(opts.id);
-  if (opts.refs) o.refs = opts.refs;
+  if (opts.refs) o.refs = opts.refs; if (opts.noShadow) o.noShadow = true;
   Object.assign(o.base, opts.base || {}); if (opts.params) Object.assign(o.params, opts.params); if (opts.name) o.name = opts.name; if (opts.cons) Object.assign(o.cons, opts.cons);
   project.objects.push(o); buildRuntime(o);
   if (!opts.silent) { select(o.id); commit(); }
@@ -125,6 +125,7 @@ function renderInspector() {
     <div class="prow wide"><span class="lb">Montar (rig)</span><select data-cons="mount">${optsObj(c.mount)}</select></div>
     ${o.type !== 'camera' ? `<div class="prow wide"><span class="lb">Esconder nas câmeras</span><input type="checkbox" id="camHid" ${o.camHidden ? 'checked' : ''} title="Aparece no editor, mas não nas câmeras nem no vídeo (carro de câmera, equipe, marcações)"></div>` : ''}
     ${o.type !== 'camera' && o.type !== 'null' ? `<div class="prow wide"><span class="lb">Principal no Clay</span><input type="checkbox" id="clayHero" ${o.clayHero ? 'checked' : ''} title="No modo Clay, este objeto usa a cor de 'Carro principal' (destaque)"></div>` : ''}
+    ${o.type !== 'camera' && o.type !== 'null' ? `<div class="prow wide"><span class="lb">Projeta sombra</span><input type="checkbox" id="castSh" ${o.noShadow ? '' : 'checked'} title="Desligue para que o objeto não faça sombra na cena (ex.: prédios cobrindo a rua)"></div>` : ''}
     ${followsGround(o) ? `<div class="prow wide"><span class="lb">Seguir estrada/terreno</span><input type="checkbox" id="consGround" ${c.ground === false ? '' : 'checked'}></div>` : ''}
     <div class="prow wide"><span class="lb">Tremor (°)</span><input type="number" step="0.1" min="0" data-cons="shake" value="${c.shake}"></div>
     <div class="prow wide"><span class="lb">Freq. tremor</span><input type="number" step="0.1" min="0" data-cons="shakeFreq" value="${c.shakeFreq}"></div>

@@ -38,7 +38,7 @@ function buildAvenueLoop() {
     }
   }
   for (let k = -1; k <= 2; k++) for (const b of blocks) { const z = b.z + k * D; if (!inWorld(z, 20)) continue;
-    add('building', { name: 'Prédio', params: Object.assign(defaultParams('building'), { width: b.d, depth: b.w, floors: b.floors, floorH: 3.3, color: b.c, glass: b.gl, style: b.style }), base: { px: b.sx * (E + b.setback + b.d / 2), py: 0, pz: z } }); }
+    add('building', { name: 'Prédio', noShadow: true, params: Object.assign(defaultParams('building'), { width: b.d, depth: b.w, floors: b.floors, floorH: 3.3, color: b.c, glass: b.gl, style: b.style }), base: { px: b.sx * (E + b.setback + b.d / 2), py: 0, pz: z } }); }
   const TREE = D / 29, LAMP = D / 20, treeH = Array.from({ length: 58 }, () => 6 + rnd() * 3);
   for (const sx of [-1, 1]) {
     for (let z = Z0 + 10, i = 0; z < Z1; z += TREE, i++) { const ii = ((Math.round((z - Z0 - 10) / TREE) % 29) + 29) % 29 + (sx > 0 ? 29 : 0); add('tree', { name: 'Árvore', params: Object.assign(defaultParams('tree'), { height: treeH[ii] }), base: { px: sx * (hw + 1.9), py: 0, pz: z } }); }

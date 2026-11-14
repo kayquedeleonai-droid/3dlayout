@@ -13,6 +13,10 @@ const hemi = new THREE.HemisphereLight('#dfe9f5', '#5a5248', 1.1); scene.add(hem
 const sun = new THREE.DirectionalLight('#ffffff', 1.8); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
 Object.assign(sun.shadow.camera, { left: -70, right: 70, top: 70, bottom: -70, near: 1, far: 400 }); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03;
 scene.add(sun, sun.target);
+const sunDir = new THREE.Vector3(0, 1, 0);
+// a área de sombra (140 m) acompanha a câmera que está renderizando — antes era fixa na origem
+const _sf = new THREE.Vector3(), _sfw = new THREE.Vector3();
+function sunFollow(cam) { cam.getWorldPosition(_sf); cam.getWorldDirection(_sfw); _sfw.y = Math.min(_sfw.y, -0.05); const d = clamp(_sf.y / -_sfw.y, 4, 30); _sf.addScaledVector(_sfw, d); const q = 0.0625; _sf.set(Math.round(_sf.x / q) * q, 0, Math.round(_sf.z / q) * q); sun.target.position.copy(_sf); sun.position.copy(_sf).addScaledVector(sunDir, 150); sun.target.updateMatrixWorld(); sun.updateMatrixWorld(); }
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(1, 1, 96, 96), // subdividido: triângulos gigantes perdem precisão de profundidade e o chão "vence" o asfalto
   new THREE.MeshStandardMaterial({ color: '#8d9094', roughness: 1, metalness: 0 }));
 ground.rotation.x = -Math.PI / 2; ground.position.y = -0.02; ground.receiveShadow = true; ground.userData.ground = true; scene.add(ground);
@@ -103,6 +107,7 @@ function buildRuntime(o) {
   const bb = new THREE.Box3(); g.traverse(n => { if (n.isMesh && !isHelperNode(n)) bb.expandByObject(n); });
   const radius = bb.isEmpty() ? 0.6 : Math.max(0.4, bb.getSize(new THREE.Vector3()).length() / 2);
   world.add(g);
+  if (o.noShadow) g.traverse(n => { if (n.isMesh) n.castShadow = false; });
   rt.set(o.id, { g, helpers, radius, segHex, rig: g.userData.rig, p, size: bb.isEmpty() ? null : bb.getSize(new THREE.Vector3()) });
   if (!_skipConform) { if (o.type === 'terrain') conformTerrain(o); else if (o.type === 'roadpath' && project.objects.some(x => x.type === 'terrain')) conformAllTerrain(); }
   return rt.get(o.id);
@@ -127,7 +132,7 @@ function applyEnv() {
   ground.material.color.set(s.ground); ground.scale.set(s.groundSize, s.groundSize, 1);
   grid.visible = s.grid;
   const az = s.sunAz * DEG, el = s.sunEl * DEG;
-  sun.position.set(Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az)).multiplyScalar(150);
+  sunDir.set(Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az)); sun.position.copy(sun.target.position).addScaledVector(sunDir, 150);
   sun.intensity = s.sunInt; hemi.intensity = 1.25; hemi.color.set('#f2f4f7'); hemi.groundColor.set('#6d6a66');
   depthMat.uniforms.far.value = s.depthFar || 80;
   applyEnvExtra(s);
@@ -249,6 +254,7 @@ function setHelpersVisible(v) {
   for (const r of rt.values()) for (const h of r.helpers) h.visible = v;
 }
 function renderScene(rend, cam, mode, w, h, vx = 0, vy = 0, target = null) {
+  sunFollow(cam);
   const bg = scene.background, fog = scene.fog;
   let swapped = null;
   if (mode === 'clay') swapped = claySwap();
