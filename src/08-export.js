@@ -17,7 +17,7 @@ $('#bExport').onclick = () => {
     <label>Frames</label><span><input id="exF0" type="number" value="0" style="width:70px"> até <input id="exF1" type="number" value="${project.duration}" style="width:70px"> <span class="hint">(${project.fps} fps, ${project.aspect})</span></span>
     </div><div class="hint" id="exHint" style="margin-top:10px">O vídeo é renderizado quadro a quadro (MP4 H.264) a partir da câmera ou da edição escolhida. Mantenha esta aba aberta durante a exportação.</div>
     <div class="prog" id="exProg" style="display:none"><i></i></div>
-    <div class="btnrow" style="margin-top:12px"><button class="pri" id="exGo">Exportar</button></div>`, m => {
+    <div class="btnrow" style="margin-top:12px"><button class="pri" id="exGo">Exportar</button><span class="grow"></span><span class="hint" title="Se for anterior à última atualização, recarregue a página (Ctrl+Shift+R)">versão do app: ${(() => { const d = new Date(APP_BUILD.replace(" UTC", "Z").replace(" ", "T")); return isNaN(d) ? APP_BUILD : d.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }); })()}</span></div>`, m => {
     m.querySelector('#exPass').value = renderMode;
     m.querySelector('#exGo').onclick = async () => {
       const kind = $('#exKind').value, f0 = clamp(+$('#exF0').value, 0, project.duration), f1 = clamp(+$('#exF1').value, f0, project.duration), res = $('#exRes').value, pass = $('#exPass').value, cam = exportCam();
@@ -47,6 +47,7 @@ async function exportVideo(camObj, pass, res, f0, f1, tag) {
     let blob = null;
     try { blob = await exportVideoWC(camObj, pass, W, H, f0, f1, tag); }
     catch (err) { console.warn('WebCodecs falhou, usando gravação em tempo real', err); toast('Codificador quadro a quadro indisponível — usando gravação em tempo real', 4000); }
+    if (blob && blob.size < 2000) throw new Error('o vídeo saiu vazio — recarregue a página e tente de novo');
     if (blob) { setProg(1, `Pronto: ${(blob.size / 1e6).toFixed(1)} MB · ${f1 - f0 + 1} quadros · ${W}×${H} MP4`); await saveFile(name + '.mp4', blob); return; }
   }
   await exportVideoMR(camObj, pass, W, H, f0, f1, tag, name);

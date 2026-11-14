@@ -7,13 +7,13 @@ const ORDER = ['00-icons.js', '01-core.js', '02-assets.js', '02b-realcar.js', '0
 const THREE_VER = '0.160.0';
 const html = S('head.html')
   + `<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@${THREE_VER}/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@${THREE_VER}/examples/jsm/"}}</script>\n`
-  + '<script type="module">\n' + ORDER.map(S).join('\n') + '\n</script>\n</body></html>\n';
+  + '<script type="module">\nconst APP_BUILD = ' + JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC') + ';\n' + ORDER.map(S).join('\n') + '\n</script>\n</body></html>\n';
 fs.mkdirSync(path.join(root, 'public'), { recursive: true });
 fs.writeFileSync(path.join(root, 'public', 'index.html'), html);
 console.log(`public/index.html — ${(html.length / 1024).toFixed(0)} KB`);
 // checagem de sintaxe do módulo (falha o build em vez de publicar uma página quebrada)
 {
   const { execFileSync } = await import('node:child_process'); const os = await import('node:os');
-  const tmp = path.join(os.tmpdir(), 'layout3d-check.mjs'); fs.writeFileSync(tmp, ORDER.map(S).join('\n'));
+  const tmp = path.join(os.tmpdir(), 'layout3d-check.mjs'); fs.writeFileSync(tmp, 'const APP_BUILD = "x";\n' + ORDER.map(S).join('\n'));
   try { execFileSync(process.execPath, ['--check', tmp], { stdio: 'pipe' }); } catch (e) { console.error(String(e.stderr || e)); process.exit(1); }
 }
