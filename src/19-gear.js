@@ -12,6 +12,7 @@ const GEAR = {
   dolly: { lb: 'Dolly Chapman Super PeeWee IV (trilho)', ic: '🛤️', grp: 'Chão', hMin: 0.48, hMax: 1.53, vMax: 3.0, gauge: 0.62, src: 'Super PeeWee IV: lente 0,48–1,53 m (modo baixo a extensor), braço 0,84 m, 0,51 × 1,07 m, bitola de trilho 24,5". Velocidade empurrada por maquinista ~3 m/s (típico).' },
   steadicam: { lb: 'Steadicam (operador)', ic: '🚶', grp: 'Chão', hMin: 0.4, hMax: 1.9, vMax: 4.5, op: true, shake: 0.25, src: 'Lente ~0,4 m (low mode) a 1,9 m. Operador andando/correndo: até ~4,5 m/s (típico); mais rápido, use veículo.' },
   gimbal: { lb: 'Gimbal de mão (Ronin 2 / MoVI)', ic: '🤲', grp: 'Chão', hMin: 0.2, hMax: 2.1, vMax: 6, op: true, shake: 0.15, src: 'Gimbal de 3 eixos na mão: ~0,2–2,1 m; corrida até ~6 m/s (típico).' },
+  tracking: { lb: 'Na mão em veículo de travelling (quadri / moto)', ic: '🛵', grp: 'Veículo', hMin: 0.6, hMax: 2.6, vMax: 30, op: true, shake: 0.25, src: 'Operador com a câmera na mão (ou gimbal) de costas num quadriciclo / moto elétrica: acompanha corrida a pé e veículos lentos com movimento de mão suave (típico em perseguições).' },
   handheld: { lb: 'Câmera na mão / ombro', ic: '✋', grp: 'Chão', hMin: 0.3, hMax: 1.9, vMax: 5, op: true, shake: 0.7, src: 'Ombro ~1,5–1,7 m; baixo ~0,3 m. Tremor natural de operador.' },
   jib: { lb: 'Grua jib 4 m (base fixa)', ic: '🏗️', grp: 'Gruas', base: true, pivotH: 1.5, reach: [0.6, 4.0], hMin: 0, hMax: 5.5, vMax: 2.5, src: 'Jib manual de 4 m sobre tripé/pedestal, pivô ~1,5 m, lente até ~5,5 m (típico).' },
   techno: { lb: 'Technocrane SuperTechno 30', ic: '🏗️', grp: 'Gruas', base: true, pivotH: 2.36, reach: [2.65, 9.14], hMin: 0, hMax: 9.2, tele: 1.83, vMax: 4, rear: 2.4, baseW: 1.49, baseL: 1.65, src: 'SuperTechno 30: alcance do poste 2,65–9,14 m (telescópico 6,9 m), lente até 9,2 m, telescópio até 1,83 m/s, base 1,49 × 1,65 m, poste 2,15–2,56 m, traseira 2,4 m.' },
@@ -214,7 +215,7 @@ function gearLibraryHTML(card, m, subj, isCar) {
 }
 function createGearCamera(k, subj) {
   const G = GEAR[k], t = subj ? worldPos(subj, curFrame, new THREE.Vector3()) : new THREE.Vector3(0, 0, 0), sy = subj ? getVal(subj, 'ry', curFrame) * DEG : 0;
-  const pos = { tripod: [5, 1.5, 4], slider: [4, 1.3, 3], dolly: [6, 1.2, 0], steadicam: [0, 1.5, -4], gimbal: [0, 1.4, -3.5], handheld: [2.5, 1.6, -3], jib: [6, 3, 3], techno: [7, 4.5, 4], russian: [3, 1.2, 4], carmount: [0, 1.6, 2], drone: [25, 30, 25], fpv: [6, 3, -8], cable: [0, 10, 0] }[k] || [5, 1.5, 5];
+  const pos = { tripod: [5, 1.5, 4], slider: [4, 1.3, 3], dolly: [6, 1.2, 0], steadicam: [0, 1.5, -4], gimbal: [0, 1.4, -3.5], handheld: [2.5, 1.6, -3], tracking: [0, 1.5, -4], jib: [6, 3, 3], techno: [7, 4.5, 4], russian: [3, 1.2, 4], carmount: [0, 1.6, 2], drone: [25, 30, 25], fpv: [6, 3, -8], cable: [0, 10, 0] }[k] || [5, 1.5, 5];
   const off = new THREE.Vector3(pos[0], 0, pos[2]).applyAxisAngle(UP, sy);
   const cam = addObject('camera', { silent: true, name: G.lb.split(' (')[0], base: { px: t.x + off.x, py: pos[1] + (subj ? 0 : 0), pz: t.z + off.z, focal: k === 'drone' ? 24 : k === 'techno' ? 32 : 35 } });
   if (subj) { cam.cons.aim = subj.id; cam.cons.aimH = Math.min(1.2, (rt.get(subj.id)?.size?.y || 1.5) * 0.6); }

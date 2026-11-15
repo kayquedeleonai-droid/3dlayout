@@ -140,7 +140,9 @@ function applyOverlay(rig, c) {
   if (ov.kind === 'look' || ov.look) {
     const K = ov.look || ov.keys || []; let yaw = 0, pit = 0;
     for (let i = 0; i < K.length; i++) { const [fa, ya, pa] = K[i], nx = K[i + 1]; if (f >= fa && (!nx || f < nx[0])) { if (nx) { const u = (f - fa) / (nx[0] - fa), s = u * u * (3 - 2 * u); yaw = lerp(ya, nx[1], s); pit = lerp(pa || 0, nx[2] || 0, s); } else { yaw = ya; pit = pa || 0; } } }
-    const up = axis(0, 1, 0); rotBone('spine_02', up, yaw * DEG * 0.2); rotBone('spine_03', up, yaw * DEG * 0.25); rotBone('neck_01', up, yaw * DEG * 0.25); rotBone('Head', up, yaw * DEG * 0.3);
+    // giro distribuído como no corpo real: pouco na coluna, mais no pescoço e na cabeça; limite anatômico ~80°
+    yaw = clamp(yaw, -80, 80); const up = axis(0, 1, 0);
+    rotBone('spine_02', up, yaw * DEG * 0.08); rotBone('spine_03', up, yaw * DEG * 0.14); rotBone('neck_01', up, yaw * DEG * 0.33); rotBone('Head', up, yaw * DEG * 0.45);
     if (pit) rotBone('Head', axis(1, 0, 0), pit * DEG);
   }
   if (ov.kind === 'tightrope') {
@@ -153,13 +155,15 @@ function applyOverlay(rig, c) {
     rotBone('Head', axis(1, 0, 0), 0.32 + 0.1 * crouch);                               // olhar para a corda / ponto à frente
     // braços abertos: o que sobe e o que desce depende do torque de correção u; ruído de micro-ajuste nos antebraços
     for (const [sd, sx] of [['l', 1], ['r', -1]]) {
-      const ub = R.B['upperarm_' + sd], lb = R.B['lowerarm_' + sd]; if (!ub || !lb) continue;
-      const a = clamp(0.12 + sx * u * 0.9 + 0.45 * crouch + sampleArr(ov.n1, f + (sx > 0 ? 0 : 37)) * 0.08, -0.9, 1.35);   // elevação do braço (rad)
-      const fw = 0.18 + 0.12 * crouch;
+      const ub = R.B['upperarm_' + sd], lb = R.B['lowerarm_' + sd], hb = R.B['hand_' + sd]; if (!ub || !lb) continue;
+      // braços perto da horizontal e um pouco à frente; a reação de equilíbrio sobe um e desce o outro
+      const a = clamp(0.05 + sx * u * 0.55 + 0.32 * crouch + sampleArr(ov.n1, f + (sx > 0 ? 0 : 37)) * 0.05, -0.75, 1.0);
+      const fw = 0.3 + 0.1 * crouch;
       boneAim(ub, lb, axis(sx * Math.cos(a), Math.sin(a), fw));
-      const a2 = a + 0.18 + sampleArr(ov.n1, f * 1.7 + (sx > 0 ? 11 : 53)) * 0.12;
-      boneAim(lb, R.B['hand_' + sd], axis(sx * Math.cos(a2), Math.sin(a2), fw + 0.25));
-      rotBone('hand_' + sd, axis(sx, 0, 0), sx * 0.15);
+      const a2 = a + 0.07 + sampleArr(ov.n1, f * 1.7 + (sx > 0 ? 11 : 53)) * 0.04;   // cotovelo levemente flexionado
+      boneAim(lb, hb, axis(sx * Math.cos(a2), Math.sin(a2), fw + 0.16));
+      // punho reto e relaxado (segue o antebraço), mão levemente caída
+      if (hb) { hb.quaternion.copy(hb.userData.restQ); hb.updateMatrixWorld(true); rotBone('hand_' + sd, axis(0, 0, 1), sx * -0.12); }
     }
     // pés na linha da corda (x = 0 no espaço da pessoa), levemente virados para fora
     for (const [sd, sx] of [['l', 1], ['r', -1]]) {
