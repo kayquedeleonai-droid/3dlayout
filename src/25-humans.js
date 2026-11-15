@@ -42,6 +42,7 @@ function attachHuman(g, p) {
     m.traverse(n => { if (n.isMesh) { if (neutral) n.material = neutral; n.castShadow = true; n.receiveShadow = true; n.frustumCulled = false; n.userData.human = true; } });
     g.add(m); m.updateMatrixWorld(true);
     const B = {}; m.traverse(n => { if (n.isBone) B[n.name] = n; });
+    if (p.skinMat === 'blocks') buildBlockBody(g, m, B, rig.H);
     const restRel = {}, gInv = new THREE.Quaternion();
     g.getWorldQuaternion(gInv).invert();
     for (const [name] of HUMAN_CHAIN) { restRel[name] = gInv.clone().multiply(B[name].getWorldQuaternion(new THREE.Quaternion())); B[name].userData.restQ = B[name].quaternion.clone(); }
@@ -52,6 +53,50 @@ function attachHuman(g, p) {
     rig.realPending = false;
     if (rig._lastPose) retargetHuman(rig); if (typeof bump === 'function') bump();
   }).catch(() => { g.traverse(n => { if (n.userData.proxy) n.visible = true; }); rig.realPending = false; });
+}
+// ---- blocagem: caixas presas aos ossos do mesmo esqueleto (a animação é idêntica à do modelo realista) ----
+// proporções em fração da altura (homem ~1,78 m); sem anatomia detalhada, de propósito (layout para IA / previs)
+function buildBlockBody(g, m, B, H) {
+  m.traverse(n => { if (n.isSkinnedMesh) n.visible = false; });
+  const mat = _humanTpl._blk || (_humanTpl._blk = new THREE.MeshStandardMaterial({ color: '#c9c4bb', roughness: .7, flatShading: true }));
+  const matD = _humanTpl._blkD || (_humanTpl._blkD = new THREE.MeshStandardMaterial({ color: '#9d978d', roughness: .7, flatShading: true }));
+  const box = _humanTpl._box || (_humanTpl._box = new THREE.BoxGeometry(1, 1, 1));
+  const k = H / 1.78, W = (n) => B[n] && B[n].getWorldPosition(new THREE.Vector3());
+  const gq = g.getWorldQuaternion(new THREE.Quaternion()), FW = new THREE.Vector3(0, 0, 1).applyQuaternion(gq), UP = new THREE.Vector3(0, 1, 0).applyQuaternion(gq);
+  // a: ponto inicial, b: final (mundo, em repouso), w: largura, d: profundidade (m), inset: encurta as pontas p/ juntas legíveis
+  const add = (bn, a, b, w, d, o = {}) => {
+    const bone = B[bn]; if (!bone || !a || !b) return;
+    const dir = b.clone().sub(a), L = dir.length(); if (L < 1e-4) return; dir.normalize();
+    const ins = o.inset ?? 0.06, a2 = a.clone().addScaledVector(dir, L * ins), b2 = b.clone().addScaledVector(dir, -L * ins);
+    let z = (o.fw || FW).clone().addScaledVector(dir, -(o.fw || FW).dot(dir)); if (z.lengthSq() < 1e-6) z = UP.clone().addScaledVector(dir, -UP.dot(dir)); z.normalize();
+    const x = new THREE.Vector3().crossVectors(dir, z);
+    const M = new THREE.Matrix4().makeBasis(x, dir, z).setPosition(a2.clone().add(b2).multiplyScalar(0.5));
+    const mesh = new THREE.Mesh(box, o.dark ? matD : mat); mesh.castShadow = true; mesh.receiveShadow = true; mesh.frustumCulled = false; mesh.userData.human = true;
+    M.multiply(new THREE.Matrix4().makeScale(w * k * (o.taper || 1), a2.distanceTo(b2) * (o.lenK || 1), d * k));
+    bone.updateMatrixWorld(true); mesh.matrixAutoUpdate = true;
+    new THREE.Matrix4().copy(bone.matrixWorld).invert().multiply(M).decompose(mesh.position, mesh.quaternion, mesh.scale);
+    bone.add(mesh);
+  };
+  const up = (p, h) => p.clone().addScaledVector(UP, h * k), fwd = (p, h) => p.clone().addScaledVector(FW, h * k);
+  // tronco: pelve, abdômen, peito (com largura de ombro), pescoço, cabeça
+  const pel = W('pelvis'), s1 = W('spine_01'), s2 = W('spine_02'), s3 = W('spine_03'), nk = W('neck_01'), hd = W('Head');
+  add('pelvis', up(pel, -0.09), s1 || up(pel, 0.08), 0.33, 0.21, { inset: 0 });
+  add('spine_01', s1, s2, 0.29, 0.19, { inset: 0.02 });
+  add('spine_02', s2, s3, 0.33, 0.21, { inset: 0.02 });
+  add('spine_03', s3, nk, 0.40, 0.23, { inset: 0 });
+  add('neck_01', nk, hd, 0.11, 0.11, { inset: 0 });
+  add('Head', up(hd, -0.02), up(hd, 0.215), 0.165, 0.21, { inset: 0 });
+  add('Head', fwd(up(hd, 0.06), 0.09), fwd(up(hd, 0.1), 0.115), 0.04, 0.03, { inset: 0, dark: true }); // nariz: mostra para onde ele olha
+  for (const sd of ['l', 'r']) {
+    add('clavicle_' + sd, W('clavicle_' + sd), W('upperarm_' + sd), 0.1, 0.12, { inset: 0.15 });
+    add('upperarm_' + sd, W('upperarm_' + sd), W('lowerarm_' + sd), 0.1, 0.1, { inset: 0.03 });
+    add('lowerarm_' + sd, W('lowerarm_' + sd), W('hand_' + sd), 0.085, 0.08, { inset: 0.04 });
+    const mid = W('middle_01_' + sd), hnd = W('hand_' + sd); if (mid) add('hand_' + sd, hnd, mid.clone().add(mid.clone().sub(hnd).multiplyScalar(0.7)), 0.085, 0.03, { inset: 0, dark: true });
+    add('thigh_' + sd, W('thigh_' + sd), W('calf_' + sd), 0.155, 0.16, { inset: 0.03 });
+    add('calf_' + sd, W('calf_' + sd), W('foot_' + sd), 0.11, 0.115, { inset: 0.04 });
+    const ft = W('foot_' + sd), ball = W('ball_' + sd);
+    if (ft && ball) { const heel = ft.clone().addScaledVector(FW, -0.05 * k); heel.y = ft.y - 0.03 * k; const b2 = ball.clone(); b2.y = heel.y; add('foot_' + sd, heel, b2, 0.095, 0.075, { inset: 0, fw: UP, dark: true }); const toe = b2.clone().addScaledVector(FW, 0.06 * k); add('ball_' + sd, b2, toe, 0.09, 0.05, { inset: 0, fw: UP, dark: true }); }
+  }
 }
 const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _qg = new THREE.Quaternion();
 const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _v4 = new THREE.Vector3();

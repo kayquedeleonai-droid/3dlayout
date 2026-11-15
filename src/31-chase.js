@@ -64,7 +64,7 @@ function buildChase() {
   const spd = H.map((h, i) => i ? Math.hypot(h.x - H[i - 1].x, h.z - H[i - 1].z) * fps : V);
   const lean = ry.map((a, i) => { if (i === 0 || i >= TURN0) return 0; const w = (a - ry[i - 1]) * fps; return -Math.atan(spd[i] * w / g); });
   const leanS = lean.map((_, i) => { let a = 0, n = 0; for (let j = -3; j <= 3; j++) { const k = clamp(i + j, 0, N - 1); a += lean[k]; n++; } return a / n; });
-  const runner = add('person', { name: 'Fugitivo', params: Object.assign(defaultParams('person'), { look: 'real', height: 1.78, skinMat: 'tex' }) });
+  const runner = add('person', { name: 'Fugitivo', params: Object.assign(defaultParams('person'), { look: 'real', height: 1.78, skinMat: 'blocks' }) });
   writeSamples(runner, 'px', H.map(h => ({ f: h.f, v: h.x })), 'every'); writeSamples(runner, 'pz', H.map(h => ({ f: h.f, v: h.z })), 'every'); writeSamples(runner, 'py', H.map(h => ({ f: h.f, v: h.y })), 'every');
   writeSamples(runner, 'ry', ry.map((v2, f) => ({ f, v: v2 / DEG })), 'every'); writeSamples(runner, 'rz', leanS.map((v2, f) => ({ f, v: v2 / DEG })), 'every');
   runner.cons.ground = false; Object.assign(runner.base, { px: H[0].x, py: 0, pz: H[0].z, ry: ry[0] / DEG });
@@ -85,7 +85,7 @@ function buildChase() {
   const sPStop = sOfZp(AZ + 0.3), PV = 6.1, PH = []; { let sp = 0, vp = PV, stopT = -1;
     for (let f = 0; f < N; f++) { const tt = f / fps; if (stopT < 0) { const br = Math.sqrt(Math.max(0, 2 * 6.5 * (sPStop - sp))); vp = Math.min(PV, br); if (vp < 0.05) stopT = tt; } else if (tt - stopT > 1.7) vp = Math.min(3.2, vp + 2 / fps); else vp = 0;
       const p = pc.getPointAt(clamp(sp / PL, 0, 1)), d = pc.getTangentAt(clamp(sp / PL, 0, 1)); PH.push({ f, x: p.x, z: p.z, ry: Math.atan2(d.x, d.z), v: vp, stopT }); sp += vp / fps; } }
-  const pursuer = add('person', { name: 'Perseguidor', params: Object.assign(defaultParams('person'), { look: 'real', height: 1.83, skinMat: 'clay' }) });
+  const pursuer = add('person', { name: 'Perseguidor', params: Object.assign(defaultParams('person'), { look: 'real', height: 1.83, skinMat: 'blocks' }) });
   writeSamples(pursuer, 'px', PH.map(h => ({ f: h.f, v: h.x })), 'every'); writeSamples(pursuer, 'pz', PH.map(h => ({ f: h.f, v: h.z })), 'every'); writeSamples(pursuer, 'ry', PH.map(h => ({ f: h.f, v: h.ry / DEG })), 'every');
   Object.assign(pursuer.base, { px: PH[0].x, pz: PH[0].z, ry: PH[0].ry / DEG });
   const pStopF = PH.findIndex(h => h.v < 0.05 && h.f > 10), pGoF = pStopF > 0 ? pStopF + Math.round(1.7 * fps) : DUR;

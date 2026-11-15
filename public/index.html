@@ -440,7 +440,7 @@ body.dev-phone #clayBar{right:8px;top:8px;width:200px}
 <div id="toast"></div>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
-const APP_BUILD = "2026-11-15 13:34 UTC";
+const APP_BUILD = "2026-11-15 14:28 UTC";
 /* ============================================================
    ÍCONES FLAT (traço 1,75, 24×24, currentColor) — substituem os emojis da interface
    ============================================================ */
@@ -945,7 +945,7 @@ function animPerson(rig, c, p, phaseOff = 0) {
   else if (rig.real || rig.realPending) retargetHuman(rig);
   if (rig.real && rig.obj && rig.obj.overlay && typeof applyOverlay === 'function') applyOverlay(rig, c);
 }
-const personParams = (h, shirt, pants, skin) => [P('look', 'Visual', 'select', 'real', { opts: [['real', 'Humano realista (base mesh)'], ['bot', 'Bot (estilo Mixamo)'], ['mannequin', 'Manequim de madeira'], ['clothes', 'Roupas']] }), P('skinMat', 'Acabamento (realista)', 'select', 'tex', { opts: [['tex', 'Pele com textura'], ['clay', 'Neutro cinza (manequim)']] }), P('height', 'Altura (m)', 'num', h, { min: 0.8, max: 2.2, step: .01 }), P('build', 'Porte', 'num', 0.5, { min: 0, max: 1, step: .05 }), P('shirt', 'Camisa', 'color', shirt), P('pants', 'Calça', 'color', pants), P('skin', 'Pele', 'color', skin), P('hair', 'Cabelo', 'color', '#2a1d14'), P('sex', 'Corpo', 'select', 'm', { opts: [['m', 'Masculino'], ['f', 'Feminino']] }), P('sleeves', 'Mangas', 'select', 'long', { opts: [['long', 'Compridas'], ['short', 'Curtas']] }), P('pose', 'Pose parado', 'select', 'stand', { opts: [['stand', 'Em pé'], ['sit', 'Sentado'], ['drive', 'Dirigindo (banco do carro)'], ['wave', 'Acenando'], ['phone', 'Ao telefone'], ['cross', 'Braços cruzados'], ['point', 'Apontando']] }), P('walk', 'Vel. andar (m/s)', 'num', 1.4, { min: .3, max: 3, step: .1 }), P('run', 'Vel. correr (m/s)', 'num', 4.5, { min: 2, max: 10, step: .1 })];
+const personParams = (h, shirt, pants, skin) => [P('look', 'Visual', 'select', 'real', { opts: [['real', 'Humano realista (base mesh)'], ['bot', 'Bot (estilo Mixamo)'], ['mannequin', 'Manequim de madeira'], ['clothes', 'Roupas']] }), P('skinMat', 'Acabamento (realista)', 'select', 'tex', { opts: [['tex', 'Pele com textura'], ['clay', 'Neutro cinza (manequim)'], ['blocks', 'Blocagem (caixas, mesma animação)']] }), P('height', 'Altura (m)', 'num', h, { min: 0.8, max: 2.2, step: .01 }), P('build', 'Porte', 'num', 0.5, { min: 0, max: 1, step: .05 }), P('shirt', 'Camisa', 'color', shirt), P('pants', 'Calça', 'color', pants), P('skin', 'Pele', 'color', skin), P('hair', 'Cabelo', 'color', '#2a1d14'), P('sex', 'Corpo', 'select', 'm', { opts: [['m', 'Masculino'], ['f', 'Feminino']] }), P('sleeves', 'Mangas', 'select', 'long', { opts: [['long', 'Compridas'], ['short', 'Curtas']] }), P('pose', 'Pose parado', 'select', 'stand', { opts: [['stand', 'Em pé'], ['sit', 'Sentado'], ['drive', 'Dirigindo (banco do carro)'], ['wave', 'Acenando'], ['phone', 'Ao telefone'], ['cross', 'Braços cruzados'], ['point', 'Apontando']] }), P('walk', 'Vel. andar (m/s)', 'num', 1.4, { min: .3, max: 3, step: .1 }), P('run', 'Vel. correr (m/s)', 'num', 4.5, { min: 2, max: 10, step: .1 })];
 def('person', { cat: 'Pessoas', label: 'Pessoa', icon: '🧍', pilot: 'walker', params: personParams(1.75, '#2f6db5', '#3a3d45', '#d9a07a'), build: buildPerson, anim: animPerson });
 def('woman', { cat: 'Pessoas', label: 'Mulher', icon: '🧍‍♀️', pilot: 'walker', params: personParams(1.65, '#c94b3c', '#24262b', '#f1c7a6').map(x => x.k === 'sex' ? { ...x, def: 'f' } : x.k === 'build' ? { ...x, def: 0.2 } : x.k === 'hair' ? { ...x, def: '#6b3f1f' } : x), build: buildPerson, anim: animPerson });
 def('child', { cat: 'Pessoas', label: 'Criança', icon: '🧒', pilot: 'walker', params: personParams(1.15, '#d9a441', '#2f6db5', '#d9a07a').map(x => x.k === 'build' ? { ...x, def: 0.3 } : x.k === 'walk' ? { ...x, def: 1.1 } : x), build: buildPerson, anim: animPerson });
@@ -5909,6 +5909,7 @@ function attachHuman(g, p) {
     m.traverse(n => { if (n.isMesh) { if (neutral) n.material = neutral; n.castShadow = true; n.receiveShadow = true; n.frustumCulled = false; n.userData.human = true; } });
     g.add(m); m.updateMatrixWorld(true);
     const B = {}; m.traverse(n => { if (n.isBone) B[n.name] = n; });
+    if (p.skinMat === 'blocks') buildBlockBody(g, m, B, rig.H);
     const restRel = {}, gInv = new THREE.Quaternion();
     g.getWorldQuaternion(gInv).invert();
     for (const [name] of HUMAN_CHAIN) { restRel[name] = gInv.clone().multiply(B[name].getWorldQuaternion(new THREE.Quaternion())); B[name].userData.restQ = B[name].quaternion.clone(); }
@@ -5919,6 +5920,50 @@ function attachHuman(g, p) {
     rig.realPending = false;
     if (rig._lastPose) retargetHuman(rig); if (typeof bump === 'function') bump();
   }).catch(() => { g.traverse(n => { if (n.userData.proxy) n.visible = true; }); rig.realPending = false; });
+}
+// ---- blocagem: caixas presas aos ossos do mesmo esqueleto (a animação é idêntica à do modelo realista) ----
+// proporções em fração da altura (homem ~1,78 m); sem anatomia detalhada, de propósito (layout para IA / previs)
+function buildBlockBody(g, m, B, H) {
+  m.traverse(n => { if (n.isSkinnedMesh) n.visible = false; });
+  const mat = _humanTpl._blk || (_humanTpl._blk = new THREE.MeshStandardMaterial({ color: '#c9c4bb', roughness: .7, flatShading: true }));
+  const matD = _humanTpl._blkD || (_humanTpl._blkD = new THREE.MeshStandardMaterial({ color: '#9d978d', roughness: .7, flatShading: true }));
+  const box = _humanTpl._box || (_humanTpl._box = new THREE.BoxGeometry(1, 1, 1));
+  const k = H / 1.78, W = (n) => B[n] && B[n].getWorldPosition(new THREE.Vector3());
+  const gq = g.getWorldQuaternion(new THREE.Quaternion()), FW = new THREE.Vector3(0, 0, 1).applyQuaternion(gq), UP = new THREE.Vector3(0, 1, 0).applyQuaternion(gq);
+  // a: ponto inicial, b: final (mundo, em repouso), w: largura, d: profundidade (m), inset: encurta as pontas p/ juntas legíveis
+  const add = (bn, a, b, w, d, o = {}) => {
+    const bone = B[bn]; if (!bone || !a || !b) return;
+    const dir = b.clone().sub(a), L = dir.length(); if (L < 1e-4) return; dir.normalize();
+    const ins = o.inset ?? 0.06, a2 = a.clone().addScaledVector(dir, L * ins), b2 = b.clone().addScaledVector(dir, -L * ins);
+    let z = (o.fw || FW).clone().addScaledVector(dir, -(o.fw || FW).dot(dir)); if (z.lengthSq() < 1e-6) z = UP.clone().addScaledVector(dir, -UP.dot(dir)); z.normalize();
+    const x = new THREE.Vector3().crossVectors(dir, z);
+    const M = new THREE.Matrix4().makeBasis(x, dir, z).setPosition(a2.clone().add(b2).multiplyScalar(0.5));
+    const mesh = new THREE.Mesh(box, o.dark ? matD : mat); mesh.castShadow = true; mesh.receiveShadow = true; mesh.frustumCulled = false; mesh.userData.human = true;
+    M.multiply(new THREE.Matrix4().makeScale(w * k * (o.taper || 1), a2.distanceTo(b2) * (o.lenK || 1), d * k));
+    bone.updateMatrixWorld(true); mesh.matrixAutoUpdate = true;
+    new THREE.Matrix4().copy(bone.matrixWorld).invert().multiply(M).decompose(mesh.position, mesh.quaternion, mesh.scale);
+    bone.add(mesh);
+  };
+  const up = (p, h) => p.clone().addScaledVector(UP, h * k), fwd = (p, h) => p.clone().addScaledVector(FW, h * k);
+  // tronco: pelve, abdômen, peito (com largura de ombro), pescoço, cabeça
+  const pel = W('pelvis'), s1 = W('spine_01'), s2 = W('spine_02'), s3 = W('spine_03'), nk = W('neck_01'), hd = W('Head');
+  add('pelvis', up(pel, -0.09), s1 || up(pel, 0.08), 0.33, 0.21, { inset: 0 });
+  add('spine_01', s1, s2, 0.29, 0.19, { inset: 0.02 });
+  add('spine_02', s2, s3, 0.33, 0.21, { inset: 0.02 });
+  add('spine_03', s3, nk, 0.40, 0.23, { inset: 0 });
+  add('neck_01', nk, hd, 0.11, 0.11, { inset: 0 });
+  add('Head', up(hd, -0.02), up(hd, 0.215), 0.165, 0.21, { inset: 0 });
+  add('Head', fwd(up(hd, 0.06), 0.09), fwd(up(hd, 0.1), 0.115), 0.04, 0.03, { inset: 0, dark: true }); // nariz: mostra para onde ele olha
+  for (const sd of ['l', 'r']) {
+    add('clavicle_' + sd, W('clavicle_' + sd), W('upperarm_' + sd), 0.1, 0.12, { inset: 0.15 });
+    add('upperarm_' + sd, W('upperarm_' + sd), W('lowerarm_' + sd), 0.1, 0.1, { inset: 0.03 });
+    add('lowerarm_' + sd, W('lowerarm_' + sd), W('hand_' + sd), 0.085, 0.08, { inset: 0.04 });
+    const mid = W('middle_01_' + sd), hnd = W('hand_' + sd); if (mid) add('hand_' + sd, hnd, mid.clone().add(mid.clone().sub(hnd).multiplyScalar(0.7)), 0.085, 0.03, { inset: 0, dark: true });
+    add('thigh_' + sd, W('thigh_' + sd), W('calf_' + sd), 0.155, 0.16, { inset: 0.03 });
+    add('calf_' + sd, W('calf_' + sd), W('foot_' + sd), 0.11, 0.115, { inset: 0.04 });
+    const ft = W('foot_' + sd), ball = W('ball_' + sd);
+    if (ft && ball) { const heel = ft.clone().addScaledVector(FW, -0.05 * k); heel.y = ft.y - 0.03 * k; const b2 = ball.clone(); b2.y = heel.y; add('foot_' + sd, heel, b2, 0.095, 0.075, { inset: 0, fw: UP, dark: true }); const toe = b2.clone().addScaledVector(FW, 0.06 * k); add('ball_' + sd, b2, toe, 0.09, 0.05, { inset: 0, fw: UP, dark: true }); }
+  }
 }
 const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _qg = new THREE.Quaternion();
 const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _v4 = new THREE.Vector3();
@@ -6595,7 +6640,7 @@ function buildChase() {
   const spd = H.map((h, i) => i ? Math.hypot(h.x - H[i - 1].x, h.z - H[i - 1].z) * fps : V);
   const lean = ry.map((a, i) => { if (i === 0 || i >= TURN0) return 0; const w = (a - ry[i - 1]) * fps; return -Math.atan(spd[i] * w / g); });
   const leanS = lean.map((_, i) => { let a = 0, n = 0; for (let j = -3; j <= 3; j++) { const k = clamp(i + j, 0, N - 1); a += lean[k]; n++; } return a / n; });
-  const runner = add('person', { name: 'Fugitivo', params: Object.assign(defaultParams('person'), { look: 'real', height: 1.78, skinMat: 'tex' }) });
+  const runner = add('person', { name: 'Fugitivo', params: Object.assign(defaultParams('person'), { look: 'real', height: 1.78, skinMat: 'blocks' }) });
   writeSamples(runner, 'px', H.map(h => ({ f: h.f, v: h.x })), 'every'); writeSamples(runner, 'pz', H.map(h => ({ f: h.f, v: h.z })), 'every'); writeSamples(runner, 'py', H.map(h => ({ f: h.f, v: h.y })), 'every');
   writeSamples(runner, 'ry', ry.map((v2, f) => ({ f, v: v2 / DEG })), 'every'); writeSamples(runner, 'rz', leanS.map((v2, f) => ({ f, v: v2 / DEG })), 'every');
   runner.cons.ground = false; Object.assign(runner.base, { px: H[0].x, py: 0, pz: H[0].z, ry: ry[0] / DEG });
@@ -6616,7 +6661,7 @@ function buildChase() {
   const sPStop = sOfZp(AZ + 0.3), PV = 6.1, PH = []; { let sp = 0, vp = PV, stopT = -1;
     for (let f = 0; f < N; f++) { const tt = f / fps; if (stopT < 0) { const br = Math.sqrt(Math.max(0, 2 * 6.5 * (sPStop - sp))); vp = Math.min(PV, br); if (vp < 0.05) stopT = tt; } else if (tt - stopT > 1.7) vp = Math.min(3.2, vp + 2 / fps); else vp = 0;
       const p = pc.getPointAt(clamp(sp / PL, 0, 1)), d = pc.getTangentAt(clamp(sp / PL, 0, 1)); PH.push({ f, x: p.x, z: p.z, ry: Math.atan2(d.x, d.z), v: vp, stopT }); sp += vp / fps; } }
-  const pursuer = add('person', { name: 'Perseguidor', params: Object.assign(defaultParams('person'), { look: 'real', height: 1.83, skinMat: 'clay' }) });
+  const pursuer = add('person', { name: 'Perseguidor', params: Object.assign(defaultParams('person'), { look: 'real', height: 1.83, skinMat: 'blocks' }) });
   writeSamples(pursuer, 'px', PH.map(h => ({ f: h.f, v: h.x })), 'every'); writeSamples(pursuer, 'pz', PH.map(h => ({ f: h.f, v: h.z })), 'every'); writeSamples(pursuer, 'ry', PH.map(h => ({ f: h.f, v: h.ry / DEG })), 'every');
   Object.assign(pursuer.base, { px: PH[0].x, pz: PH[0].z, ry: PH[0].ry / DEG });
   const pStopF = PH.findIndex(h => h.v < 0.05 && h.f > 10), pGoF = pStopF > 0 ? pStopF + Math.round(1.7 * fps) : DUR;
