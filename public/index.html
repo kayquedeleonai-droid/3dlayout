@@ -440,7 +440,7 @@ body.dev-phone #clayBar{right:8px;top:8px;width:200px}
 <div id="toast"></div>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
-const APP_BUILD = "2026-11-15 14:28 UTC";
+const APP_BUILD = "2026-11-15 19:24 UTC";
 /* ============================================================
    ÍCONES FLAT (traço 1,75, 24×24, currentColor) — substituem os emojis da interface
    ============================================================ */
@@ -6581,6 +6581,7 @@ function buildTightrope() {
    O perseguidor passa pela boca do beco sem vê-lo.
    Física: voo balístico (g = 9,81), inclinação na curva = atan(v·ω/g), frenagem ~7 m/s².
    ============================================================ */
+let VAULT_OFF = 0.35;
 function buildChase() {
   const fps = 24, g = 9.81;
   const P0 = newProject(); P0.name = 'Perseguição — beco (ação)'; P0.fps = fps; P0.aspect = '2.39:1';
@@ -6610,7 +6611,13 @@ function buildChase() {
   const curve = new THREE.CatmullRomCurve3([[0, 0, -12], [0, 0, 10], [0, 0, 30], [0.1, 0, 36.5], [-1.2, 0, 41.4], [-5.2, 0, AZ - 0.2], [-10, 0, AZ], [-26, 0, AZ]].map(a => new THREE.Vector3(...a)), false, 'centripetal');
   const LEN = curve.getLength(), at = (s) => curve.getPointAt(clamp(s / LEN, 0, 1)), tan = (s) => curve.getTangentAt(clamp(s / LEN, 0, 1));
   const sOfZ = (z) => { let lo = 0, hi = LEN; for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; if (at(m).z < z) lo = m; else hi = m; } return lo; };
-  const JH = 1.05, S_TO = sOfZ(20.9), S_LAND = sOfZ(26.9), FLIGHT = Math.sqrt(8 * JH / g);      // voo balístico para subir 1,05 m: 0,93 s
+  // passagem pelo capô (step-vault): impulso, apoia um pé no capô, salta para o outro lado — como um parkour real, sem voo de 6 m
+  const hoodY = (() => { try { const go = rt.get(jc.id).g; go.updateMatrixWorld(true); const rc = new THREE.Raycaster(new THREE.Vector3(0, 4, JCZ - 0.2), new THREE.Vector3(0, -1, 0)); const hit = rc.intersectObject(go, true).find(h => h.object.visible !== false); return hit ? clamp(hit.point.y, 0.55, 1.1) : 0.86; } catch (e) { return 0.86; } })();
+  const VH = 5.6, Z_TO = JCZ - 1.75, Z_ST = JCZ - 0.2, Z_OFF = JCZ + 0.3, Z_LAND = JCZ + 2.45;
+  const T1 = (Z_ST - Z_TO) / VH, TC = (Z_OFF - Z_ST) / VH, T2 = (Z_LAND - Z_OFF) / VH, FLIGHT = T1 + TC + T2;
+  const VY1 = (hoodY + g * T1 * T1 / 2) / T1, VY2 = (-hoodY + g * T2 * T2 / 2) / T2;
+  const S_TO = sOfZ(Z_TO), S_LAND = sOfZ(Z_LAND);
+  const vaultY = (tt) => tt < T1 ? VY1 * tt - g * tt * tt / 2 : tt < T1 + TC ? hoodY - 0.06 * Math.sin(Math.PI * (tt - T1) / TC) : (() => { const u = tt - T1 - TC; return hoodY + VY2 * u - g * u * u / 2; })();
   const ROLL_T = [0, 0.365, 0.73, 1.095, 1.46], ROLL_Z = [0, 2.03, 4.25, 4.94, 5.02], ROFF = 0.3;  // curva de deslocamento do Roll_RM
   const rollZ = (t) => { let i = 0; while (i < 3 && t > ROLL_T[i + 1]) i++; const u = clamp((t - ROLL_T[i]) / (ROLL_T[i + 1] - ROLL_T[i]), 0, 1); return lerp(ROLL_Z[i], ROLL_Z[i + 1], u * u * (3 - 2 * u) * 0.35 + u * 0.65); };
   const V = 6.4, VTURN = 4.9;
@@ -6623,7 +6630,7 @@ function buildChase() {
     if (phase === 'air') { const u = (t - tTO) / FLIGHT; if (u >= 1) { phase = 'roll'; tLand = t; s = S_LAND; } }
     if (phase === 'roll') { const tr = t - tLand + ROFF; if (tr >= 1.46) { phase = 'run2'; tRollEnd = t; v = 2.6; } }
     let y = 0;
-    if (phase === 'air') { const u = (t - tTO) / FLIGHT; s = lerp(S_TO, S_LAND, u); y = 4 * JH * u * (1 - u); }
+    if (phase === 'air') { const u = (t - tTO) / FLIGHT; s = lerp(S_TO, S_LAND, u); y = Math.max(0, vaultY(t - tTO)); }
     else if (phase === 'roll') { s = S_LAND + rollZ(t - tLand + ROFF) - rollZ(ROFF); }
     else if (phase === 'run2') { const vt = s > sTurn0 - 3 && s < sTurn1 ? VTURN : V; const brake = Math.sqrt(Math.max(0, 2 * 7 * (sStop - s))); v = Math.min(v + 3.2 / fps, vt, brake); if (v > vt) v = Math.max(vt, v - 6 / fps); if (s >= sStop - 0.02 || v < 0.05) { phase = 'stop'; tStop = t; v = 0; } }
     const p = at(s); H.push({ f, t, s, x: p.x, y, z: p.z, ph: phase });
@@ -6646,8 +6653,7 @@ function buildChase() {
   runner.cons.ground = false; Object.assign(runner.base, { px: H[0].x, py: 0, pz: H[0].z, ry: ry[0] / DEG });
   const F = (sec) => Math.round(sec * fps), fTO = F(tTO), fLand = F(tLand), fRE = F(tRollEnd);
   runner.acts = [
-    { c: 'Sprint_Loop', f0: 0, f1: fTO - 1, rate: 'auto', bl: 4 },
-    { c: 'Sprint_Loop', f0: fTO - 1, f1: fLand - 1, rate: 0.26, off: 0.14, bl: 4 },   // salto em corrida: passada "congelada" (barreira)
+    { c: 'Sprint_Loop', f0: 0, f1: fLand - 1, rate: 'auto', off: VAULT_OFF, bl: 4 },   // a passada continua pelo capô; fase ajustada para um pé apoiar no capô
     { c: 'Roll', f0: fLand, f1: fRE, off: ROFF, bl: 4 },
     { c: 'Sprint_Loop', f0: fRE, f1: fStop - 3, rate: 'auto', bl: 7 },
     { c: 'Idle_Loop', f0: fStop - 3, f1: TURN1 + 18, bl: 8, off: 0.4 },
@@ -6659,14 +6665,14 @@ function buildChase() {
   const pc = new THREE.CatmullRomCurve3([[1.9, 0, -42], [1.9, 0, 17], [-1.6, 0, 21.5], [-1.6, 0, 26.5], [1.2, 0, 31], [1.4, 0, 52], [1.6, 0, 70]].map(a => new THREE.Vector3(...a)), false, 'centripetal');
   const PL = pc.getLength(), sOfZp = (z) => { let lo = 0, hi = PL; for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; if (pc.getPointAt(m / PL).z < z) lo = m; else hi = m; } return lo; };
   const sPStop = sOfZp(AZ + 0.3), PV = 6.1, PH = []; { let sp = 0, vp = PV, stopT = -1;
-    for (let f = 0; f < N; f++) { const tt = f / fps; if (stopT < 0) { const br = Math.sqrt(Math.max(0, 2 * 6.5 * (sPStop - sp))); vp = Math.min(PV, br); if (vp < 0.05) stopT = tt; } else if (tt - stopT > 1.7) vp = Math.min(3.2, vp + 2 / fps); else vp = 0;
+    for (let f = 0; f < N; f++) { const tt = f / fps; if (stopT < 0) { const br = Math.sqrt(Math.max(0, 2 * 6.5 * (sPStop - sp))); vp = Math.min(PV, br); if (vp < 0.05) stopT = tt; } else if (tt - stopT > 1.15) vp = Math.min(6.0, vp + 6.5 / fps); else vp = 0;
       const p = pc.getPointAt(clamp(sp / PL, 0, 1)), d = pc.getTangentAt(clamp(sp / PL, 0, 1)); PH.push({ f, x: p.x, z: p.z, ry: Math.atan2(d.x, d.z), v: vp, stopT }); sp += vp / fps; } }
   const pursuer = add('person', { name: 'Perseguidor', params: Object.assign(defaultParams('person'), { look: 'real', height: 1.83, skinMat: 'blocks' }) });
   writeSamples(pursuer, 'px', PH.map(h => ({ f: h.f, v: h.x })), 'every'); writeSamples(pursuer, 'pz', PH.map(h => ({ f: h.f, v: h.z })), 'every'); writeSamples(pursuer, 'ry', PH.map(h => ({ f: h.f, v: h.ry / DEG })), 'every');
   Object.assign(pursuer.base, { px: PH[0].x, pz: PH[0].z, ry: PH[0].ry / DEG });
-  const pStopF = PH.findIndex(h => h.v < 0.05 && h.f > 10), pGoF = pStopF > 0 ? pStopF + Math.round(1.7 * fps) : DUR;
-  pursuer.acts = pStopF > 0 ? [{ c: 'Sprint_Loop', f0: 0, f1: pStopF - 2, rate: 'auto', bl: 6 }, { c: 'Idle_Loop', f0: pStopF - 2, f1: pGoF, bl: 8 }, { c: 'Jog_Fwd_Loop', f0: pGoF, f1: DUR, rate: 'auto', bl: 8 }] : [{ c: 'Sprint_Loop', f0: 0, f1: DUR, rate: 'auto' }];
-  if (pStopF > 0) pursuer.overlay = { kind: 'look', keys: [[0, 0, 0], [pStopF, 0, 0], [pStopF + 5, -85, 4], [pStopF + 20, -85, 4], [pStopF + 27, 55, 0], [pStopF + 36, 55, 0], [pGoF, 0, 0]] };
+  const pStopF = PH.findIndex(h => h.v < 0.05 && h.f > 10), pGoF = pStopF > 0 ? pStopF + Math.round(1.15 * fps) : DUR;
+  pursuer.acts = pStopF > 0 ? [{ c: 'Sprint_Loop', f0: 0, f1: pStopF - 2, rate: 'auto', bl: 6 }, { c: 'Idle_Loop', f0: pStopF - 2, f1: pGoF, bl: 8 }, { c: 'Sprint_Loop', f0: pGoF, f1: DUR, rate: 'auto', bl: 5 }] : [{ c: 'Sprint_Loop', f0: 0, f1: DUR, rate: 'auto' }];
+  if (pStopF > 0) pursuer.overlay = { kind: 'look', keys: [[0, 0, 0], [pStopF, 0, 0], [pStopF + 3, -80, 4], [pStopF + 13, -80, 4], [pStopF + 18, 50, 0], [pStopF + 24, 50, 0], [pGoF - 2, 0, 0]] };
   buildRuntime(pursuer);
   // ---------- câmeras ----------
   const body = (o, b, ls) => { const B = CAMERA_BODIES[b], Ls = LENS_SETS[ls]; Object.assign(o.params, { body: b, sensorW: B.w, sensorH: B.h, lensSet: ls, squeeze: String(Ls.sq || 1), tstop: Ls.t, focusAuto: true }); };
@@ -6717,11 +6723,11 @@ function buildChase() {
   cl.cons.aim = mouthT.id; cl.cons.aimH = 0; Object.assign(cl.base, { px: H[N - 1].x - 1.05, py: 1.0, pz: AZ - 0.42 }); buildRuntime(cl);
   // ---------- montagem ----------
   const cut1 = fTO - F(0.35), cut2 = fRE - F(0.2), cut3 = fStop - F(0.9), cut4 = TURN1 + 14;
-  project.shots = [[fpv, 0, cut1, 'Travelling na mão · sprint', 'Operador com a câmera na mão num quadriciclo, 2,5–4 m atrás: acompanha suave, balanço leve de mão; ele olha para trás por cima do ombro.'], [low, cut1, cut2, 'Pulo · rente ao chão', '14 mm no asfalto do outro lado do carro: ele voa por cima do capô e cai rolando.'], [fpv, cut2, cut3, 'Travelling · virada no beco', 'Volta no travelling: retoma a corrida, a câmera abre na curva e entra colada no beco.'], [hh, cut3, cut4, 'Na mão · freada', 'Operador ofegante no beco: ele freia, procura em volta, vira.'], [cl, cut4, DUR, 'Escondido · por cima do ombro', '40 mm por cima do ombro, agachado atrás da caçamba: o perseguidor para na boca do beco, olha para dentro e não o vê.']]
+  project.shots = [[fpv, 0, cut1, 'Travelling na mão · sprint', 'Operador com a câmera na mão num quadriciclo, 2,5–4 m atrás: acompanha suave, balanço leve de mão; ele olha para trás por cima do ombro.'], [low, cut1, cut2, 'Pulo · rente ao chão', '14 mm no asfalto do outro lado do carro: ele apoia um pé no capô, salta para o outro lado e cai rolando.'], [fpv, cut2, cut3, 'Travelling · virada no beco', 'Volta no travelling: retoma a corrida, a câmera abre na curva e entra colada no beco.'], [hh, cut3, cut4, 'Na mão · freada', 'Operador ofegante no beco: ele freia, procura em volta, vira.'], [cl, cut4, DUR, 'Escondido · por cima do ombro', '40 mm por cima do ombro, agachado atrás da caçamba: o perseguidor para na boca do beco, olha para dentro e não o vê.']]
     .map(([c, start, end, name, notes]) => ({ cam: c.id, start, end, name, notes }));
   normalizeShots(); project.activeCamera = fpv.id;
   rebuildAll(); applyFrame(0); commit(); renderOutliner(); renderInspector(); tlDirty = true; renderViewSel(); setView('cam');
-  return { runner, pursuer, dur: (DUR + 1) / fps, tTO, tLand, tRollEnd, tStop, maxLean: Math.max(...leanS.map(Math.abs)) / DEG, pStop: pStopF / fps };
+  return { hoodY, fContact: F(tTO + T1 + TC / 2), runner, pursuer, dur: (DUR + 1) / fps, tTO, tLand, tRollEnd, tStop, maxLean: Math.max(...leanS.map(Math.abs)) / DEG, pStop: pStopF / fps };
 }
 
 init();
