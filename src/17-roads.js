@@ -48,7 +48,7 @@ function buildRoadPath(p, g) {
     const m = mesh(geo, mat, 0, 0, 0, g); m.castShadow = false; m.receiveShadow = true; if (poly) { m.material.polygonOffset = true; } return m;
   };
   const both = (mat, a, b, y = lift, from, to) => { strip(mat, () => [a, y], () => [b, y], from, to); strip(mat, () => [-b, y], () => [-a, y], from, to); };
-  const dashed = (mat, a, b, y, dash = 4, gap = 12) => { let i0 = null; for (let i = 0; i < S.length; i++) { const on = (S[i].s % (dash + gap)) < dash; if (on && i0 === null) i0 = i; if ((!on || i === S.length - 1) && i0 !== null) { strip(mat, () => [a, y], () => [b, y], i0, Math.max(i0 + 1, i)); i0 = null; } } };
+  const dashed = (mat, a, b, y, dash = 4, gap = 12) => { let i0 = null; for (let i = 0; i < S.length; i++) { const on = (S[i].s % (dash + gap)) < dash; if (on && i0 === null) i0 = i; if ((!on || i === S.length - 1) && i0 !== null) { const to = Math.min(S.length - 1, Math.max(i0 + 1, i)); if (to > i0) strip(mat, () => [a, y], () => [b, y], i0, to); i0 = null; } } };
   const asphalt = roadMat(p.asphalt || '#3a3c40'), white = roadMat('#e8e6e1', { r: .8 }), yel = roadMat('#e0b030', { r: .8 }), shoulderM = roadMat('#55575b'), dirt = roadMat('#7b7364'), conc = roadMat('#a7a49d', { r: .9 }), curb = roadMat('#c7c4bd', { r: .9 });
   white.userData.clay = yel.userData.clay = 'lines'; asphalt.userData.clay = shoulderM.userData.clay = 'asphalt'; conc.userData.clay = curb.userData.clay = dirt.userData.clay = 'curb';
   strip(asphalt, () => [-hw, lift], () => [hw, lift]);

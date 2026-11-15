@@ -133,6 +133,7 @@ function renderInspector() {
   if (o.type === 'realcar') h += sec('car', 'Ficha técnica do carro', carSection(o));
   if (o.type === 'roadpath') h += sec('road', 'Traçado da estrada', roadSectionHTML(o));
   if (isCam) h += sec('gear', 'Equipamento de filmagem' + (o.gear && o.gear.type !== 'none' ? ' <span style="color:var(--acc)">•</span>' : ''), gearSectionHTML(o));
+  if (o.type === 'person' && typeof actsSectionHTML === 'function') h += sec('acts', 'Atuação (mocap)' + (o.acts && o.acts.length ? ' <span style="color:var(--acc)">•</span>' : ''), actsSectionHTML(o));
   if (!isCam && ASSETS[o.type].pilot) h += sec('speed', 'Velocidade e quilometragem', speedSectionHTML(o));
   if (o.type !== 'camera') h += sec('ref', 'Model sheet / referência' + (o.refs && Object.keys(o.refs).length ? ' <span style="color:var(--acc)">•</span>' : ''), refsSection(o));
   if (d.params.length) h += sec(isCam ? 'sens' : 'par', isCam ? 'Sensor e óptica (avançado)' : 'Parâmetros procedurais', d.params.map(p => paramField(p, o.params[p.k] ?? p.def)).join(''));

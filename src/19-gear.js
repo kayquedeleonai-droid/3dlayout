@@ -47,7 +47,7 @@ function gearCheck(o, type) {
   const veh = G.car ? getObj((o.gear && o.gear.veh) || o.cons.mount) : null;
   for (let f = 0; f <= N; f++) {
     if (!air(f)) { prevR = null; continue; }
-    const p = P[f], h = p.y - groundBelow(p); hMin = Math.min(hMin, h); hMax = Math.max(hMax, h);
+    const p = P[f], h = p.y - (o.gear && o.gear.surfaceY != null ? o.gear.surfaceY : groundBelow(p)); // surfaceY: equipamento montado num telhado/plataforma hMin = Math.min(hMin, h); hMax = Math.max(hMax, h);
     if (f > 0 && air(f - 1)) { const d = p.distanceTo(P[f - 1]) * fps, vy = (p.y - P[f - 1].y) * fps; vMax = Math.max(vMax, d); vUpMax = Math.max(vUpMax, vy); vDnMax = Math.max(vDnMax, -vy); moved += p.distanceTo(P[f - 1]);
       if (G.vMax && d > G.vMax * 1.02) bad('v', f); if (G.vUp && vy > G.vUp * 1.02) bad('vup', f); if (G.vDown && -vy > G.vDown * 1.02) bad('vdn', f); }
     if (G.hMin != null && h < G.hMin - 0.01) bad('hmin', f); if (G.hMax != null && h > G.hMax + 0.01) bad('hmax', f);

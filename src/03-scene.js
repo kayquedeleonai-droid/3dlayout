@@ -108,6 +108,7 @@ function buildRuntime(o) {
   const radius = bb.isEmpty() ? 0.6 : Math.max(0.4, bb.getSize(new THREE.Vector3()).length() / 2);
   world.add(g);
   if (o.noShadow) g.traverse(n => { if (n.isMesh) n.castShadow = false; });
+  if (g.userData.rig) g.userData.rig.obj = o;
   rt.set(o.id, { g, helpers, radius, segHex, rig: g.userData.rig, p, size: bb.isEmpty() ? null : bb.getSize(new THREE.Vector3()) });
   if (!_skipConform) { if (o.type === 'terrain') conformTerrain(o); else if (o.type === 'roadpath' && project.objects.some(x => x.type === 'terrain')) conformAllTerrain(); }
   return rt.get(o.id);

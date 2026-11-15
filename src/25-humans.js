@@ -45,7 +45,10 @@ function attachHuman(g, p) {
     const restRel = {}, gInv = new THREE.Quaternion();
     g.getWorldQuaternion(gInv).invert();
     for (const [name] of HUMAN_CHAIN) { restRel[name] = gInv.clone().multiply(B[name].getWorldQuaternion(new THREE.Quaternion())); B[name].userData.restQ = B[name].quaternion.clone(); }
-    rig.real = { m, B, restRel, kY: (tpl.pY * s) / rig.hipY, pelvisRest: B.pelvis.position.clone() };
+    // pose de repouso completa (para o mocap): rotação de cada osso relativa ao grupo e posições-chave no espaço do grupo
+    const restAll = {}, gInvM = new THREE.Matrix4().copy(g.matrixWorld).invert(), loc = (b) => b.getWorldPosition(new THREE.Vector3()).applyMatrix4(gInvM);
+    for (const k in B) { restAll[k] = gInv.clone().multiply(B[k].getWorldQuaternion(new THREE.Quaternion())); B[k].userData.restQ = B[k].quaternion.clone(); }
+    rig.real = { m, B, restRel, restAll, kY: (tpl.pY * s) / rig.hipY, pelvisRest: B.pelvis.position.clone(), pelvisG: loc(B.pelvis), ankleG: loc(B.foot_l), legLen: loc(B.thigh_l).distanceTo(loc(B.calf_l)) + loc(B.calf_l).distanceTo(loc(B.foot_l)) };
     rig.realPending = false;
     if (rig._lastPose) retargetHuman(rig); if (typeof bump === 'function') bump();
   }).catch(() => { g.traverse(n => { if (n.userData.proxy) n.visible = true; }); rig.realPending = false; });

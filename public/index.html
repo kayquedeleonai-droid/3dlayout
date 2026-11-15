@@ -440,7 +440,7 @@ body.dev-phone #clayBar{right:8px;top:8px;width:200px}
 <div id="toast"></div>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
-const APP_BUILD = "2026-11-14 20:40 UTC";
+const APP_BUILD = "2026-11-15 06:50 UTC";
 /* ============================================================
    ÍCONES FLAT (traço 1,75, 24×24, currentColor) — substituem os emojis da interface
    ============================================================ */
@@ -941,7 +941,9 @@ function animPerson(rig, c, p, phaseOff = 0) {
       const A = rig.arms[1]; A.s.rotation.set(-1.5, 0, 0); A.e.rotation.set(-0.05, 0, 0);
     }
   }
-  if (rig.real || rig.realPending) retargetHuman(rig);
+  if (rig.real && rig.obj && rig.obj.acts && rig.obj.acts.length && typeof mocapPose === 'function' && mocapPose(rig, c)) { /* atuação por mocap */ }
+  else if (rig.real || rig.realPending) retargetHuman(rig);
+  if (rig.real && rig.obj && rig.obj.overlay && typeof applyOverlay === 'function') applyOverlay(rig, c);
 }
 const personParams = (h, shirt, pants, skin) => [P('look', 'Visual', 'select', 'real', { opts: [['real', 'Humano realista (base mesh)'], ['bot', 'Bot (estilo Mixamo)'], ['mannequin', 'Manequim de madeira'], ['clothes', 'Roupas']] }), P('skinMat', 'Acabamento (realista)', 'select', 'tex', { opts: [['tex', 'Pele com textura'], ['clay', 'Neutro cinza (manequim)']] }), P('height', 'Altura (m)', 'num', h, { min: 0.8, max: 2.2, step: .01 }), P('build', 'Porte', 'num', 0.5, { min: 0, max: 1, step: .05 }), P('shirt', 'Camisa', 'color', shirt), P('pants', 'Calça', 'color', pants), P('skin', 'Pele', 'color', skin), P('hair', 'Cabelo', 'color', '#2a1d14'), P('sex', 'Corpo', 'select', 'm', { opts: [['m', 'Masculino'], ['f', 'Feminino']] }), P('sleeves', 'Mangas', 'select', 'long', { opts: [['long', 'Compridas'], ['short', 'Curtas']] }), P('pose', 'Pose parado', 'select', 'stand', { opts: [['stand', 'Em pé'], ['sit', 'Sentado'], ['drive', 'Dirigindo (banco do carro)'], ['wave', 'Acenando'], ['phone', 'Ao telefone'], ['cross', 'Braços cruzados'], ['point', 'Apontando']] }), P('walk', 'Vel. andar (m/s)', 'num', 1.4, { min: .3, max: 3, step: .1 }), P('run', 'Vel. correr (m/s)', 'num', 4.5, { min: 2, max: 10, step: .1 })];
 def('person', { cat: 'Pessoas', label: 'Pessoa', icon: '🧍', pilot: 'walker', params: personParams(1.75, '#2f6db5', '#3a3d45', '#d9a07a'), build: buildPerson, anim: animPerson });
@@ -1940,6 +1942,7 @@ function buildRuntime(o) {
   const radius = bb.isEmpty() ? 0.6 : Math.max(0.4, bb.getSize(new THREE.Vector3()).length() / 2);
   world.add(g);
   if (o.noShadow) g.traverse(n => { if (n.isMesh) n.castShadow = false; });
+  if (g.userData.rig) g.userData.rig.obj = o;
   rt.set(o.id, { g, helpers, radius, segHex, rig: g.userData.rig, p, size: bb.isEmpty() ? null : bb.getSize(new THREE.Vector3()) });
   if (!_skipConform) { if (o.type === 'terrain') conformTerrain(o); else if (o.type === 'roadpath' && project.objects.some(x => x.type === 'terrain')) conformAllTerrain(); }
   return rt.get(o.id);
@@ -2379,6 +2382,7 @@ function renderInspector() {
   if (o.type === 'realcar') h += sec('car', 'Ficha técnica do carro', carSection(o));
   if (o.type === 'roadpath') h += sec('road', 'Traçado da estrada', roadSectionHTML(o));
   if (isCam) h += sec('gear', 'Equipamento de filmagem' + (o.gear && o.gear.type !== 'none' ? ' <span style="color:var(--acc)">•</span>' : ''), gearSectionHTML(o));
+  if (o.type === 'person' && typeof actsSectionHTML === 'function') h += sec('acts', 'Atuação (mocap)' + (o.acts && o.acts.length ? ' <span style="color:var(--acc)">•</span>' : ''), actsSectionHTML(o));
   if (!isCam && ASSETS[o.type].pilot) h += sec('speed', 'Velocidade e quilometragem', speedSectionHTML(o));
   if (o.type !== 'camera') h += sec('ref', 'Model sheet / referência' + (o.refs && Object.keys(o.refs).length ? ' <span style="color:var(--acc)">•</span>' : ''), refsSection(o));
   if (d.params.length) h += sec(isCam ? 'sens' : 'par', isCam ? 'Sensor e óptica (avançado)' : 'Parâmetros procedurais', d.params.map(p => paramField(p, o.params[p.k] ?? p.def)).join(''));
@@ -3112,7 +3116,7 @@ function sanitizeProject(d) {
   p.objects = (d.objects || []).filter(o => ASSETS[o.type]).map(o => {
     const base = Object.assign({ px: 0, py: 0, pz: 0, rx: 0, ry: 0, rz: 0, sx: 1, sy: 1, sz: 1 }, o.base || {}); if (o.type === 'camera' && base.focal == null) base.focal = 35;
     const tracks = {}; for (const ch in (o.tracks || {})) { const ks = (o.tracks[ch] || []).map(k => Object.assign(mkKey(k.f, k.v), k)); if (ks.length) { sortKeys(ks); autoHandles(ks); tracks[ch] = ks; } }
-    return { id: o.id || uid(), type: o.type, name: o.name || ASSETS[o.type].label, params: Object.assign(defaultParams(o.type), o.params || {}), base, tracks, cons: Object.assign({ aim: null, aimH: 1, follow: null, mount: null, shake: 0, shakeFreq: 1.5 }, o.cons || {}), hidden: !!o.hidden, refs: o.refs || undefined, custom: o.custom || undefined, gear: o.gear || undefined, camHidden: o.camHidden || undefined, clayHero: o.clayHero || undefined, noShadow: o.noShadow || undefined, speedProf: Array.isArray(o.speedProf) ? o.speedProf.filter(p => isFinite(p.t) && isFinite(p.v)) : undefined, clips: (o.clips || []).filter(c => PERSON_ACTIONS[c.kind] || QUAD_ACTIONS[c.kind]).map(c => ({ id: c.id || uid('c'), kind: c.kind, start: +c.start, end: +c.end })) };
+    return { id: o.id || uid(), type: o.type, name: o.name || ASSETS[o.type].label, params: Object.assign(defaultParams(o.type), o.params || {}), base, tracks, cons: Object.assign({ aim: null, aimH: 1, follow: null, mount: null, shake: 0, shakeFreq: 1.5 }, o.cons || {}), hidden: !!o.hidden, refs: o.refs || undefined, custom: o.custom || undefined, gear: o.gear || undefined, camHidden: o.camHidden || undefined, clayHero: o.clayHero || undefined, noShadow: o.noShadow || undefined, acts: o.acts && o.acts.length ? o.acts : undefined, overlay: o.overlay || undefined, speedProf: Array.isArray(o.speedProf) ? o.speedProf.filter(p => isFinite(p.t) && isFinite(p.v)) : undefined, clips: (o.clips || []).filter(c => PERSON_ACTIONS[c.kind] || QUAD_ACTIONS[c.kind]).map(c => ({ id: c.id || uid('c'), kind: c.kind, start: +c.start, end: +c.end })) };
   });
   if (p.activeCamera && !p.objects.find(o => o.id === p.activeCamera)) p.activeCamera = null;
   p.shots = (d.shots || []).filter(s => p.objects.find(o => o.id === s.cam)).map(s => ({ cam: s.cam, start: Math.round(+s.start || 0), end: Math.round(+s.end || 0), name: String(s.name || '').slice(0, 60), notes: String(s.notes || '').slice(0, 400) }));
@@ -3136,8 +3140,10 @@ $('#bNew').onclick = () => openModal('Nova cena', `<p>Começar uma cena vazia? A
   m.querySelector('#mNewOk').onclick = () => { closeModal(); loadProjectData(newProject()); select(null); };
   m.querySelector('#mNewCam').onclick = () => { closeModal(); loadProjectData(newProject()); addObject('camera', { base: { px: 0, py: 1.6, pz: 10, rx: -4, ry: 0 } }); };
 });
-$('#bDemo').onclick = () => openModal('Exemplos', `<div class="btnrow" style="flex-direction:column;align-items:stretch;gap:8px"><button class="pri" id="exComm" style="padding:12px;text-align:left">🏁 <b>Comercial esportivo · 30 s</b><br><span style="font-weight:400;font-size:11.5px">911 a até 215 km/h numa rodovia com curvas e ponte; 18 planos rápidos com hard mounts, tele, FPV, drone, Technocrane, cable cam e câmera na mão.</span></button><button class="pri" id="exAve" style="padding:12px;text-align:left">🏙️ <b>Avenida · loop 360° · 30 s</b><br><span style="font-weight:400;font-size:11.5px">Carro a 115 km/h costurando o trânsito numa avenida estilo Paulista; FPV dá 4 voltas de 360° em volta dele — loop perfeito para trocar o carro na IA.</span></button><button id="exBasic" style="padding:12px;text-align:left">🚗 <b>Cena simples · 10 s</b><br><span style="font-weight:400;font-size:11.5px">Carro, pedestre e 3 câmeras.</span></button></div>`, m => {
+$('#bDemo').onclick = () => openModal('Exemplos', `<div class="btnrow" style="flex-direction:column;align-items:stretch;gap:8px"><button class="pri" id="exComm" style="padding:12px;text-align:left">🏁 <b>Comercial esportivo · 30 s</b><br><span style="font-weight:400;font-size:11.5px">911 a até 215 km/h numa rodovia com curvas e ponte; 18 planos rápidos com hard mounts, tele, FPV, drone, Technocrane, cable cam e câmera na mão.</span></button><button class="pri" id="exAve" style="padding:12px;text-align:left">🏙️ <b>Avenida · loop 360° · 30 s</b><br><span style="font-weight:400;font-size:11.5px">Carro a 115 km/h costurando o trânsito numa avenida estilo Paulista; FPV dá 4 voltas de 360° em volta dele — loop perfeito para trocar o carro na IA.</span></button><button class="pri" id="exRope" style="padding:12px;text-align:left">🧍 <b>Corda bamba · 20 s</b><br><span style="font-weight:400;font-size:11.5px">Highline entre dois prédios, 45 m acima da rua. Equilíbrio simulado, desequilíbrio e recuperação; mocap no humano realista.</span></button><button class="pri" id="exChase" style="padding:12px;text-align:left">🏃 <b>Perseguição · ação · 19 s</b><br><span style="font-weight:400;font-size:11.5px">Sprint, salto sobre o capô, rolamento, beco e esconderijo. FPV frenético colado, câmera rente ao chão e na mão.</span></button><button id="exBasic" style="padding:12px;text-align:left">🚗 <b>Cena simples · 10 s</b><br><span style="font-weight:400;font-size:11.5px">Carro, pedestre e 3 câmeras.</span></button></div>`, m => {
   m.querySelector('#exAve').onclick = () => { closeModal(); toast('Montando a avenida…'); setTimeout(() => { const r = buildAvenueLoop(); toast(`Loop 360° pronto — ${r.km} km em 30 s · Espaço para tocar`, 6000); }, 30); };
+  m.querySelector('#exRope').onclick = () => { closeModal(); toast('Montando a corda bamba…'); setTimeout(() => { buildTightrope(); toast('Corda bamba pronta · Espaço para tocar (o mocap carrega em segundos)', 6000); }, 30); };
+  m.querySelector('#exChase').onclick = () => { closeModal(); toast('Montando a perseguição…'); setTimeout(() => { buildChase(); toast('Perseguição pronta · Espaço para tocar (o mocap carrega em segundos)', 6000); }, 30); };
   m.querySelector('#exBasic').onclick = () => { closeModal(); loadProjectData(demoProject()); setView('free'); toast('Cena de exemplo carregada — aperte Espaço para tocar'); };
   m.querySelector('#exComm').onclick = () => { closeModal(); toast('Montando o comercial…'); setTimeout(() => { buildSportsCommercial(); toast('Comercial de 30 s pronto — Espaço para tocar a edição · 🎬 Decupagem para ver os planos', 6000); }, 30); };
 });
@@ -4873,7 +4879,7 @@ function buildRoadPath(p, g) {
     const m = mesh(geo, mat, 0, 0, 0, g); m.castShadow = false; m.receiveShadow = true; if (poly) { m.material.polygonOffset = true; } return m;
   };
   const both = (mat, a, b, y = lift, from, to) => { strip(mat, () => [a, y], () => [b, y], from, to); strip(mat, () => [-b, y], () => [-a, y], from, to); };
-  const dashed = (mat, a, b, y, dash = 4, gap = 12) => { let i0 = null; for (let i = 0; i < S.length; i++) { const on = (S[i].s % (dash + gap)) < dash; if (on && i0 === null) i0 = i; if ((!on || i === S.length - 1) && i0 !== null) { strip(mat, () => [a, y], () => [b, y], i0, Math.max(i0 + 1, i)); i0 = null; } } };
+  const dashed = (mat, a, b, y, dash = 4, gap = 12) => { let i0 = null; for (let i = 0; i < S.length; i++) { const on = (S[i].s % (dash + gap)) < dash; if (on && i0 === null) i0 = i; if ((!on || i === S.length - 1) && i0 !== null) { const to = Math.min(S.length - 1, Math.max(i0 + 1, i)); if (to > i0) strip(mat, () => [a, y], () => [b, y], i0, to); i0 = null; } } };
   const asphalt = roadMat(p.asphalt || '#3a3c40'), white = roadMat('#e8e6e1', { r: .8 }), yel = roadMat('#e0b030', { r: .8 }), shoulderM = roadMat('#55575b'), dirt = roadMat('#7b7364'), conc = roadMat('#a7a49d', { r: .9 }), curb = roadMat('#c7c4bd', { r: .9 });
   white.userData.clay = yel.userData.clay = 'lines'; asphalt.userData.clay = shoulderM.userData.clay = 'asphalt'; conc.userData.clay = curb.userData.clay = dirt.userData.clay = 'curb';
   strip(asphalt, () => [-hw, lift], () => [hw, lift]);
@@ -5168,7 +5174,7 @@ function gearCheck(o, type) {
   const veh = G.car ? getObj((o.gear && o.gear.veh) || o.cons.mount) : null;
   for (let f = 0; f <= N; f++) {
     if (!air(f)) { prevR = null; continue; }
-    const p = P[f], h = p.y - groundBelow(p); hMin = Math.min(hMin, h); hMax = Math.max(hMax, h);
+    const p = P[f], h = p.y - (o.gear && o.gear.surfaceY != null ? o.gear.surfaceY : groundBelow(p)); // surfaceY: equipamento montado num telhado/plataforma hMin = Math.min(hMin, h); hMax = Math.max(hMax, h);
     if (f > 0 && air(f - 1)) { const d = p.distanceTo(P[f - 1]) * fps, vy = (p.y - P[f - 1].y) * fps; vMax = Math.max(vMax, d); vUpMax = Math.max(vUpMax, vy); vDnMax = Math.max(vDnMax, -vy); moved += p.distanceTo(P[f - 1]);
       if (G.vMax && d > G.vMax * 1.02) bad('v', f); if (G.vUp && vy > G.vUp * 1.02) bad('vup', f); if (G.vDown && -vy > G.vDown * 1.02) bad('vdn', f); }
     if (G.hMin != null && h < G.hMin - 0.01) bad('hmin', f); if (G.hMax != null && h > G.hMax + 0.01) bad('hmax', f);
@@ -5905,7 +5911,10 @@ function attachHuman(g, p) {
     const restRel = {}, gInv = new THREE.Quaternion();
     g.getWorldQuaternion(gInv).invert();
     for (const [name] of HUMAN_CHAIN) { restRel[name] = gInv.clone().multiply(B[name].getWorldQuaternion(new THREE.Quaternion())); B[name].userData.restQ = B[name].quaternion.clone(); }
-    rig.real = { m, B, restRel, kY: (tpl.pY * s) / rig.hipY, pelvisRest: B.pelvis.position.clone() };
+    // pose de repouso completa (para o mocap): rotação de cada osso relativa ao grupo e posições-chave no espaço do grupo
+    const restAll = {}, gInvM = new THREE.Matrix4().copy(g.matrixWorld).invert(), loc = (b) => b.getWorldPosition(new THREE.Vector3()).applyMatrix4(gInvM);
+    for (const k in B) { restAll[k] = gInv.clone().multiply(B[k].getWorldQuaternion(new THREE.Quaternion())); B[k].userData.restQ = B[k].quaternion.clone(); }
+    rig.real = { m, B, restRel, restAll, kY: (tpl.pY * s) / rig.hipY, pelvisRest: B.pelvis.position.clone(), pelvisG: loc(B.pelvis), ankleG: loc(B.foot_l), legLen: loc(B.thigh_l).distanceTo(loc(B.calf_l)) + loc(B.calf_l).distanceTo(loc(B.foot_l)) };
     rig.realPending = false;
     if (rig._lastPose) retargetHuman(rig); if (typeof bump === 'function') bump();
   }).catch(() => { g.traverse(n => { if (n.userData.proxy) n.visible = true; }); rig.realPending = false; });
@@ -6195,6 +6204,464 @@ clayBar.addEventListener('click', e => { const b = e.target.closest('[data-cb]')
   else if (k === 'hero') { const o = sel && getObj(sel); if (o) { o.clayHero = o.clayHero ? undefined : true; commit(); bump(); renderInspector(); } }
   renderClayBar(true); });
 setInterval(() => renderClayBar(), 300);
+
+/* ============================================================
+   MOCAP — atuação com animações de captura (Universal Animation Library,
+   Quaternius, CC0) retargetadas para o humano realista.
+   o.acts = [{ c: 'Sprint_Loop', f0, f1, rate: 'auto' | n, off, bl }]
+     rate 'auto' → a passada acompanha a distância percorrida (pé não desliza)
+   o.overlay = { kind: 'tightrope' | 'look', ... } → camadas por cima do clipe
+   ============================================================ */
+const UAL_URL = 'models/UAL_Standard.glb';
+const UAL_LOOPS = new Set(['Crouch_Fwd_Loop', 'Crouch_Idle_Loop', 'Dance_Loop', 'Driving_Loop', 'Idle_Loop', 'Idle_Talking_Loop', 'Idle_Torch_Loop', 'Jog_Fwd_Loop', 'Jump_Loop', 'Pistol_Idle_Loop', 'Push_Loop', 'Sitting_Idle_Loop', 'Sitting_Talking_Loop', 'Spell_Simple_Idle_Loop', 'Sprint_Loop', 'Swim_Fwd_Loop', 'Swim_Idle_Loop', 'Walk_Formal_Loop', 'Walk_Loop', 'Sword_Idle']);
+const UAL_PT = { Idle_Loop: 'Parado (respirando)', Idle_Talking_Loop: 'Parado conversando', Walk_Loop: 'Andar', Walk_Formal_Loop: 'Andar formal', Jog_Fwd_Loop: 'Trotar', Sprint_Loop: 'Correr (sprint)', Crouch_Fwd_Loop: 'Andar agachado', Crouch_Idle_Loop: 'Agachado parado', Jump_Start: 'Pulo — impulso', Jump_Loop: 'Pulo — no ar', Jump_Land: 'Pulo — aterrissagem', Roll: 'Rolamento', Death01: 'Queda / morte', Hit_Chest: 'Golpe no peito', Hit_Head: 'Golpe na cabeça', Punch_Jab: 'Soco jab', Punch_Cross: 'Soco cruzado', Punch_Enter: 'Guarda de luta', Push_Loop: 'Empurrar', PickUp_Table: 'Pegar objeto', Interact: 'Interagir', Fixing_Kneeling: 'Ajoelhado consertando', Sitting_Enter: 'Sentar', Sitting_Idle_Loop: 'Sentado', Sitting_Exit: 'Levantar', Driving_Loop: 'Dirigindo', Dance_Loop: 'Dançar', Pistol_Idle_Loop: 'Pistola — guarda', Pistol_Aim_Neutral: 'Pistola — mirar', Pistol_Shoot: 'Pistola — atirar', Pistol_Reload: 'Pistola — recarregar', Swim_Fwd_Loop: 'Nadar', Sword_Attack: 'Espada — golpe', Sword_Idle: 'Espada — guarda', Spell_Simple_Shoot: 'Lançar (magia)' };
+// calibração medida no corpo-alvo (deslize do pé no apoio ≈ 0): o apoio do sprint dura 2–3 quadros e a estimativa automática fica curta
+const UAL_CAL = { Sprint_Loop: 1.16 };
+let _ual = null;
+function loadUAL() {
+  if (_ual) return _ual;
+  return _ual = (async () => {
+    if (!_skelUtils) _skelUtils = await import('three/addons/utils/SkeletonUtils.js');
+    const L = await gltfLoader(); let g;
+    try { g = await L.loadAsync(UAL_URL); } catch (e) { g = await L.parseAsync(await loadHumanB64('ual'), ''); }
+    const root = g.scene; root.updateMatrixWorld(true);
+    const clips = {}; for (const c of g.animations) clips[c.name] = c;
+    const B = {}; root.traverse(n => { if (n.isBone) B[n.name] = n; });
+    const height = B['DEF-head'].getWorldPosition(new THREE.Vector3()).y + 0.155; // topo do crânio ≈ 1,72 m
+    // velocidade nativa de cada clipe de locomoção: velocidade do pé de apoio (perto do chão)
+    const native = {}, mixer = new THREE.AnimationMixer(root), FT = [[B['DEF-footL'], B['DEF-toeL']], [B['DEF-footR'], B['DEF-toeR']]];
+    for (const nm of ['Walk_Loop', 'Walk_Formal_Loop', 'Jog_Fwd_Loop', 'Sprint_Loop', 'Crouch_Fwd_Loop', 'Push_Loop']) {
+      if (!clips[nm]) continue; mixer.stopAllAction(); const a = mixer.clipAction(clips[nm]); a.reset().play();
+      const d = clips[nm].duration, n = 120, P = [];
+      for (let i = 0; i <= n; i++) { mixer.setTime(d * i / n); root.updateMatrixWorld(true); P.push(FT.map(([fb, tb]) => [fb.getWorldPosition(new THREE.Vector3()), tb.getWorldPosition(new THREE.Vector3())])); }
+      const minF = Math.min(...P.flatMap(q => q.map(x => x[0].y))), minT = Math.min(...P.flatMap(q => q.map(x => x[1].y))), vs = [];
+      const onGround = (x) => x[0].y < minF + 0.02 || x[1].y < minT + 0.025;                       // apoio: calcanhar OU ponta do pé no chão
+      // trecho de apoio mais longo de cada pé: velocidade = recuo do pé ÷ duração do apoio
+      for (let k = 0; k < 2; k++) { let best = null, st = -1; for (let i = 0; i <= n + 1; i++) { const on = i <= n && onGround(P[i][k]); if (on && st < 0) st = i; if (!on && st >= 0) { if (!best || i - 1 - st > best[1] - best[0]) best = [st, i - 1]; st = -1; } }
+        if (best && best[1] > best[0]) { const mid = (x) => P[x][k][0].clone().lerp(P[x][k][1], 0.5); vs.push((mid(best[0]).z - mid(best[1]).z) / ((best[1] - best[0]) * d / n)); } }
+      native[nm] = vs.length ? Math.max(0.2, vs.reduce((a, b) => a + b, 0) / vs.length) : 1;
+    }
+    mixer.stopAllAction(); mixer.uncacheRoot(root);
+    return { root, clips, native, height };
+  })().catch(e => { console.warn('UAL', e); _ual = null; throw e; });
+}
+const _san = (s) => s.replace(/[.]/g, '');
+const MOCAP_MAP = (() => {
+  const m = [['pelvis', 'DEF-hips', 'rot'], ['spine_01', 'DEF-spine.001', 'rot'], ['spine_02', 'DEF-spine.002', 'rot'], ['spine_03', 'DEF-spine.003', 'rot'], ['neck_01', 'DEF-neck', 'rot'], ['Head', 'DEF-head', 'rot']];
+  for (const [t, s] of [['l', 'L'], ['r', 'R']]) {
+    m.push([`clavicle_${t}`, `DEF-shoulder.${s}`, 'rot'], [`upperarm_${t}`, `DEF-upper_arm.${s}`, 'aim', `DEF-forearm.${s}`, `lowerarm_${t}`], [`lowerarm_${t}`, `DEF-forearm.${s}`, 'aim', `DEF-hand.${s}`, `hand_${t}`], [`hand_${t}`, `DEF-hand.${s}`, 'rot']);
+    for (const fg of ['index', 'middle', 'ring', 'pinky']) for (const i of [1, 2, 3]) m.push([`${fg}_0${i}_${t}`, `DEF-f_${fg}.0${i}.${s}`, 'rot']);
+    for (const i of [1, 2, 3]) m.push([`thumb_0${i}_${t}`, `DEF-thumb.0${i}.${s}`, 'rot']);
+  }
+  for (const [t, s] of [['l', 'L'], ['r', 'R']]) m.push([`thigh_${t}`, `DEF-thigh.${s}`, 'aim', `DEF-shin.${s}`, `calf_${t}`], [`calf_${t}`, `DEF-shin.${s}`, 'aim', `DEF-foot.${s}`, `foot_${t}`], [`foot_${t}`, `DEF-foot.${s}`, 'rot'], [`ball_${t}`, `DEF-toe.${s}`, 'rot']);
+  return m.map(([t, s, k, sc, tc]) => [t, _san(s), k, sc && _san(sc), tc]);
+})();
+// cria o esqueleto-fonte (invisível) dentro do grupo da pessoa
+function mocapInit(rig) {
+  if (rig.mocap || rig.mocapPending) return; rig.mocapPending = true;
+  loadUAL().then(U => {
+    const R = rig.real; if (!R || !R.m.parent) { rig.mocapPending = false; return; }
+    const g = R.m.parent, src = _skelUtils.clone(U.root), s = rig.H / U.height;
+    src.scale.setScalar(s); src.traverse(n => { if (n.isMesh) { n.visible = false; n.userData.helper = true; } }); src.name = 'mocap-src';
+    g.add(src); g.updateMatrixWorld(true);
+    const B = {}; src.traverse(n => { if (n.isBone) B[n.name] = n; });
+    const gInv = g.getWorldQuaternion(new THREE.Quaternion()).invert(), gInvM = new THREE.Matrix4().copy(g.matrixWorld).invert();
+    const restS = {}; for (const k in B) restS[k] = gInv.clone().multiply(B[k].getWorldQuaternion(new THREE.Quaternion()));
+    const locS = (n) => B[n].getWorldPosition(new THREE.Vector3()).applyMatrix4(gInvM);
+    const hipsS = locS('DEF-hips'), ankS = locS('DEF-footL'), kneeS = locS('DEF-shinL'), thS = locS('DEF-thighL');
+    const legS = thS.distanceTo(kneeS) + kneeS.distanceTo(ankS);
+    rig.mocap = { U, src, B, restS, hipsS, ankS, k: R.legLen / legS, mixer: new THREE.AnimationMixer(src), act: {} };
+    rig.mocapPending = false; if (typeof bump === 'function') bump();
+  }).catch(() => { rig.mocapPending = false; });
+}
+// pesos e tempos dos clipes neste quadro
+function mocapEval(rig, c) {
+  const o = rig.obj, M = rig.mocap, U = M.U, fps = project.fps, f = c.t * fps, list = [];
+  for (let ai = 0; ai < o.acts.length; ai++) {
+    const a = o.acts[ai], clip = U.clips[a.c]; if (!clip) continue; const bl = a.bl ?? 6, h = bl / 2;
+    if (f < a.f0 - h || f > a.f1 + h) continue;
+    const ramp = (x) => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
+    let w = 1; if (a.f0 > 0) w *= ramp((f - (a.f0 - h)) / Math.max(1e-6, bl)); if (a.f1 < project.duration) w *= ramp(((a.f1 + h) - f) / Math.max(1e-6, bl));
+    if (w <= 1e-4) continue;
+    let t;
+    if (a.rate === 'auto') { const nat = (U.native[a.c] || 1) * (UAL_CAL[a.c] || 1) * (rig.H / U.height) * M.k,  /* passada do corpo-alvo = passada da fonte × razão das pernas */ d0 = animCtx(o, a.f0).dist; t = (a.off || 0) + (c.dist - d0) / nat; }
+    else t = (a.off || 0) + (f - a.f0) / fps * (a.rate || 1);
+    const d = clip.duration; t = UAL_LOOPS.has(a.c) && a.loop !== false ? ((t % d) + d) % d : clamp(t, 0, d - 1e-4);
+    list.push({ clip, t, w, key: a.c + '#' + ai });
+  }
+  const sw = list.reduce((s, x) => s + x.w, 0); if (!sw) return false;
+  for (const k in M.act) M.act[k].setEffectiveWeight(0);
+  // uma ação por trecho (o mesmo clipe pode aparecer duas vezes, com tempos diferentes)
+  for (const x of list) { let ac = M.act[x.key]; if (!ac) { const cl = x.clip.clone(); cl.name = x.key; ac = M.act[x.key] = M.mixer.clipAction(cl); } ac.enabled = true; ac.play(); ac.setEffectiveWeight(x.w / sw); ac.time = x.t; }
+  M.mixer.update(0);
+  return true;
+}
+const _mq1 = new THREE.Quaternion(), _mq2 = new THREE.Quaternion(), _mq3 = new THREE.Quaternion(), _mv1 = new THREE.Vector3(), _mv2 = new THREE.Vector3(), _mv3 = new THREE.Vector3(), _mv4 = new THREE.Vector3();
+function boneSetWorldQ(b, qW) { b.parent.updateMatrixWorld(true); b.parent.getWorldQuaternion(_mq3); b.quaternion.copy(_mq3.invert().multiply(qW)); b.updateMatrixWorld(true); }
+// gira o osso para que o filho aponte na direção dada (mundo)
+function boneAim(b, child, dirW) { b.updateMatrixWorld(true); const p = b.getWorldPosition(_mv3), cp = child.getWorldPosition(_mv4); const cur = cp.sub(p).normalize(); const q = _mq1.setFromUnitVectors(cur, dirW.clone().normalize()); boneSetWorldQ(b, q.multiply(b.getWorldQuaternion(_mq2))); }
+function mocapPose(rig, c) {
+  if (!rig.mocap) { mocapInit(rig); return false; }
+  if (!mocapEval(rig, c)) return false;
+  const R = rig.real, M = rig.mocap, g = R.m.parent; g.updateMatrixWorld(true);
+  const gQ = g.getWorldQuaternion(new THREE.Quaternion()), gInv = gQ.clone().invert(), SB = M.B;
+  M.src.updateMatrixWorld(true);
+  // pelve: posição da fonte, escalada pelo comprimento da perna (pé continua no chão)
+  const gInvM = new THREE.Matrix4().copy(g.matrixWorld).invert(), hs = SB['DEF-hips'].getWorldPosition(new THREE.Vector3()).applyMatrix4(gInvM);
+  const pg = new THREE.Vector3(R.pelvisG.x + (hs.x - M.hipsS.x) * M.k, R.ankleG.y + (hs.y - M.ankS.y) * M.k, R.pelvisG.z + (hs.z - M.hipsS.z) * M.k);
+  const pel = R.B.pelvis; pel.parent.updateMatrixWorld(true); pel.position.copy(pel.parent.worldToLocal(g.localToWorld(pg)));
+  for (const [t, s, kind, sc, tc] of MOCAP_MAP) {
+    const tb = R.B[t], sb = SB[s]; if (!tb || !sb) continue;
+    if (kind === 'rot' || !sc || !SB[sc] || !R.B[tc]) {
+      const dq = _mq1.copy(gInv).multiply(sb.getWorldQuaternion(_mq2)).multiply(M.restS[s].clone().invert());
+      boneSetWorldQ(tb, _mq2.copy(gQ).multiply(dq).multiply(R.restAll[t]));
+    } else {
+      tb.quaternion.copy(tb.userData.restQ); tb.updateMatrixWorld(true);
+      const dir = SB[sc].getWorldPosition(_mv1).sub(sb.getWorldPosition(_mv2));
+      boneAim(tb, R.B[tc], dir);
+    }
+  }
+  rig._lastPose = true;
+  return true;
+}
+// IK de 2 ossos (quadril→joelho→tornozelo) mantendo a orientação do pé
+function legIK(R, side, targetW, poleW) {
+  const A = R.B['thigh_' + side], Bn = R.B['calf_' + side], C = R.B['foot_' + side];
+  A.updateMatrixWorld(true); const footQ = C.getWorldQuaternion(new THREE.Quaternion());
+  const pa = A.getWorldPosition(new THREE.Vector3()), pb = Bn.getWorldPosition(new THREE.Vector3()), pc = C.getWorldPosition(new THREE.Vector3());
+  const l1 = pa.distanceTo(pb), l2 = pb.distanceTo(pc), d = targetW.clone().sub(pa), dist = clamp(d.length(), 0.05, l1 + l2 - 1e-3), dir = d.normalize();
+  const pole = (poleW ? poleW.clone() : pb.clone()).sub(pa); const perp = pole.sub(dir.clone().multiplyScalar(pole.dot(dir))); if (perp.lengthSq() < 1e-8) perp.set(0, 0, 1); perp.normalize();
+  const ca = clamp((l1 * l1 + dist * dist - l2 * l2) / (2 * l1 * dist), -1, 1), knee = pa.clone().addScaledVector(dir, l1 * ca).addScaledVector(perp, l1 * Math.sqrt(1 - ca * ca));
+  boneAim(A, Bn, knee.clone().sub(pa));
+  const tgt = pa.clone().addScaledVector(dir, dist); boneAim(Bn, C, tgt.sub(Bn.getWorldPosition(new THREE.Vector3())));
+  boneSetWorldQ(C, footQ);
+}
+// ---------- camadas de atuação ----------
+const sampleArr = (arr, f) => { if (!arr || !arr.length) return 0; const i = clamp(Math.floor(f), 0, arr.length - 1), j = Math.min(arr.length - 1, i + 1), u = clamp(f - i, 0, 1); return arr[i] * (1 - u) + arr[j] * u; };
+function applyOverlay(rig, c) {
+  const o = rig.obj, ov = o.overlay, R = rig.real; if (!ov || !R) return;
+  const g = R.m.parent; g.updateMatrixWorld(true);
+  const f = c.t * project.fps, gQ = g.getWorldQuaternion(new THREE.Quaternion());
+  const axis = (x, y, z) => new THREE.Vector3(x, y, z).applyQuaternion(gQ).normalize();
+  const rotBone = (name, ax, ang) => { const b = R.B[name]; if (!b || !ang) return; const q = new THREE.Quaternion().setFromAxisAngle(ax, ang).multiply(b.getWorldQuaternion(new THREE.Quaternion())); boneSetWorldQ(b, q); };
+  if (ov.kind === 'look' || ov.look) {
+    const K = ov.look || ov.keys || []; let yaw = 0, pit = 0;
+    for (let i = 0; i < K.length; i++) { const [fa, ya, pa] = K[i], nx = K[i + 1]; if (f >= fa && (!nx || f < nx[0])) { if (nx) { const u = (f - fa) / (nx[0] - fa), s = u * u * (3 - 2 * u); yaw = lerp(ya, nx[1], s); pit = lerp(pa || 0, nx[2] || 0, s); } else { yaw = ya; pit = pa || 0; } } }
+    const up = axis(0, 1, 0); rotBone('spine_02', up, yaw * DEG * 0.2); rotBone('spine_03', up, yaw * DEG * 0.25); rotBone('neck_01', up, yaw * DEG * 0.25); rotBone('Head', up, yaw * DEG * 0.3);
+    if (pit) rotBone('Head', axis(1, 0, 0), pit * DEG);
+  }
+  if (ov.kind === 'tightrope') {
+    const lean = sampleArr(ov.lean, f), u = sampleArr(ov.u, f), crouch = sampleArr(ov.crouch, f), side = new THREE.Vector3(1, 0, 0);
+    // tronco e quadril compensam a inclinação (o corpo gira sobre o pé; o quadril e o tronco vão para o lado oposto)
+    const fwd = axis(0, 0, 1);
+    // o objeto inteiro já está inclinado "lean" (pivô no pé); o quadril/tronco contra-inclinam e a cabeça volta quase a nivelar
+    rotBone('spine_01', fwd, -u * 0.05 - lean * 0.35); rotBone('spine_02', fwd, -u * 0.08 - lean * 0.4); rotBone('spine_03', fwd, -u * 0.06 - lean * 0.35);
+    rotBone('neck_01', fwd, lean * 0.15 + u * 0.03); rotBone('Head', fwd, lean * 0.15 + u * 0.03);  // cabeça nivelada (reflexo vestíbulo-ocular)
+    rotBone('Head', axis(1, 0, 0), 0.32 + 0.1 * crouch);                               // olhar para a corda / ponto à frente
+    // braços abertos: o que sobe e o que desce depende do torque de correção u; ruído de micro-ajuste nos antebraços
+    for (const [sd, sx] of [['l', 1], ['r', -1]]) {
+      const ub = R.B['upperarm_' + sd], lb = R.B['lowerarm_' + sd]; if (!ub || !lb) continue;
+      const a = clamp(0.12 + sx * u * 0.9 + 0.45 * crouch + sampleArr(ov.n1, f + (sx > 0 ? 0 : 37)) * 0.08, -0.9, 1.35);   // elevação do braço (rad)
+      const fw = 0.18 + 0.12 * crouch;
+      boneAim(ub, lb, axis(sx * Math.cos(a), Math.sin(a), fw));
+      const a2 = a + 0.18 + sampleArr(ov.n1, f * 1.7 + (sx > 0 ? 11 : 53)) * 0.12;
+      boneAim(lb, R.B['hand_' + sd], axis(sx * Math.cos(a2), Math.sin(a2), fw + 0.25));
+      rotBone('hand_' + sd, axis(sx, 0, 0), sx * 0.15);
+    }
+    // pés na linha da corda (x = 0 no espaço da pessoa), levemente virados para fora
+    for (const [sd, sx] of [['l', 1], ['r', -1]]) {
+      const fb = R.B['foot_' + sd]; if (!fb) continue; const p = fb.getWorldPosition(new THREE.Vector3()), pl = g.worldToLocal(p.clone());
+      pl.x = -sx * 0.006; pl.y = Math.max(pl.y, R.ankleG.y * 0.92);   // pé alinhado com a fita (meio do pé sobre a linha)
+      const pole = g.localToWorld(new THREE.Vector3(sx * 0.12, 0.5, 0.8));
+      legIK(R, sd, g.localToWorld(pl), pole);
+      rotBone('foot_' + sd, axis(0, 1, 0), sx * 0.12);
+    }
+  }
+}
+
+// ---------- inspetor: seção "Atuação (mocap)" ----------
+function actsSectionHTML(o) {
+  const A = o.acts || [], opts = (cur) => Object.keys(UAL_PT).map(k => `<option value="${k}" ${k === cur ? 'selected' : ''}>${UAL_PT[k]}</option>`).join('');
+  let h = `<div class="hint" style="margin-bottom:6px">Clipes de captura de movimento (Universal Animation Library, CC0) aplicados ao humano realista. Com <b>passada auto</b>, a passada acompanha a distância percorrida no trajeto e o pé não desliza.</div>`;
+  if (A.length) h += `<table style="width:100%;border-collapse:collapse;font-size:11px"><tr style="color:var(--tx3)"><td>Ação</td><td>De</td><td>Até</td><td title="Passada acompanha o trajeto">Auto</td><td></td></tr>` + A.map((a, i) => `<tr><td><select data-act="${i}" data-k="c" style="max-width:128px">${opts(a.c)}</select></td><td><input type="number" data-act="${i}" data-k="f0" value="${a.f0}" style="width:52px"></td><td><input type="number" data-act="${i}" data-k="f1" value="${a.f1}" style="width:52px"></td><td><input type="checkbox" data-act="${i}" data-k="rate" ${a.rate === 'auto' ? 'checked' : ''}></td><td><button class="icon" data-actdel="${i}" title="Remover">✕</button></td></tr>`).join('') + `</table>`;
+  h += `<div class="btnrow"><button data-actadd="1">＋ Ação no quadro atual</button>${A.length ? '<button data-actclear="1">Voltar à animação procedural</button>' : ''}</div>`;
+  return h;
+}
+document.addEventListener('change', e => { const t = e.target; if (!t.dataset || t.dataset.act == null) return; const o = sel && getObj(sel); if (!o || !o.acts) return; const a = o.acts[+t.dataset.act]; if (!a) return; const k = t.dataset.k;
+  if (k === 'c') { a.c = t.value; if (/_Loop$/.test(a.c) && /Walk|Jog|Sprint|Crouch_Fwd/.test(a.c)) a.rate = 'auto'; else if (a.rate === 'auto' && !/Walk|Jog|Sprint|Crouch_Fwd|Push|Swim_Fwd/.test(a.c)) delete a.rate; }
+  else if (k === 'rate') { if (t.checked) a.rate = 'auto'; else delete a.rate; } else a[k] = Math.round(+t.value);
+  o.acts.sort((x, y) => x.f0 - y.f0); commit(); bump(); renderInspector(); });
+document.addEventListener('click', e => { const b = e.target.closest('[data-actadd],[data-actdel],[data-actclear]'); if (!b) return; const o = sel && getObj(sel); if (!o || o.type !== 'person') return;
+  if (b.dataset.actadd) { o.acts = o.acts || []; const f0 = curFrame; o.acts.push({ c: 'Idle_Loop', f0, f1: Math.min(project.duration, f0 + 48), bl: 6 }); o.acts.sort((x, y) => x.f0 - y.f0); if (o.params.look !== 'real') { o.params.look = 'real'; buildRuntime(o); toast('Atuação por mocap usa o visual "Humano realista"'); } }
+  else if (b.dataset.actdel) o.acts.splice(+b.dataset.actdel, 1);
+  else if (b.dataset.actclear) { o.acts = []; delete o.overlay; }
+  commit(); bump(); renderInspector(); });
+
+/* ============================================================
+   HIGHLINE (fita de corda bamba) — objeto dinâmico que cede sob o peso
+   Carga pontual numa fita tensionada: flecha δ = W·s·(L−s) / (T·L)
+   (W = peso, s = posição, L = vão, T = tensão). A fita segue o pé de quem anda nela.
+   ============================================================ */
+def('highline', {
+  cat: 'Cenário', label: 'Highline (fita)', icon: '〰️',
+  params: [P('span', 'Vão', 'num', 20, { min: 2, max: 200, step: .5 }), P('tension', 'Tensão (kN)', 'num', 6, { min: 1, max: 20, step: .5 }), P('weight', 'Peso de quem anda (kg)', 'num', 75, { min: 20, max: 150, step: 1 }), P('color', 'Cor da fita', 'color', '#e8c13a'), P('walker', 'Quem anda (id)', 'text', '')],
+  build(p) {
+    const g = new THREE.Group(), m = M(p.color, { r: .6 }), dark = M('#2b2c30', { r: .5 }), steel = M('#9aa0a6', { r: .35, m: .6 });
+    const seg = () => { const s = box(0.025, 0.006, 1, m, 0, 0, 0, g); s.geometry.translate(0, 0, 0.5); return s; };
+    const a = seg(), b = seg();
+    // ancoragens: placa + olhal + fita de backup
+    for (const z of [0, p.span]) { box(0.3, 0.06, 0.3, dark, 0, -0.03, z + (z ? 0.25 : -0.25), g); cyl(0.04, 0.04, 0.12, steel, 0, 0.0, z, g); }
+    g.userData.rig = { g, a, b, span: p.span };
+    return g;
+  },
+  anim(rig, c, p) {
+    const L = rig.span, f = c.t * project.fps, A = new THREE.Vector3(0, 0, 0), B = new THREE.Vector3(0, 0, L);
+    let P2 = null; const w = p.walker && getObj(p.walker);
+    if (w) { rig.g.updateMatrixWorld(true); const wp = worldPos(w, f, new THREE.Vector3()); const lp = rig.g.worldToLocal(wp); if (lp.z > 0.05 && lp.z < L - 0.05 && Math.abs(lp.x) < 1.2 && lp.y > -3 && lp.y < 0.15) P2 = lp.setY(lp.y - 0.003); }
+    if (!P2) { const s = L / 2, d = (9.81 * 3) * s * (L - s) / (p.tension * 1000 * L); P2 = new THREE.Vector3(0, -d, s); } // só o peso da fita
+    const put = (m, p0, p1) => { m.position.copy(p0); m.scale.set(1, 1, p0.distanceTo(p1)); m.lookAt(rig.g.localToWorld(p1.clone())); };
+    rig.g.updateMatrixWorld(true); put(rig.a, A, P2); put(rig.b, P2, B);
+  }
+});
+function highlineSag(span, s, tensionKN, kg) { return kg * 9.81 * s * (span - s) / (tensionKN * 1000 * span); }
+
+/* ============================================================
+   EXEMPLO · Corda bamba (highline) entre dois prédios — 20 s
+   Equilíbrio simulado: pêndulo invertido (pivô no pé) + controle humano com
+   atraso de reação (~120 ms), ruído de passada e um desequilíbrio forte no meio.
+   ============================================================ */
+function buildTightrope() {
+  const fps = 24, DUR = 479, N = DUR + 1;
+  const P0 = newProject(); P0.name = 'Corda bamba — highline entre prédios'; P0.fps = fps; P0.duration = DUR; P0.aspect = '2.39:1';
+  Object.assign(P0.settings, { sky: '#9cbad8', bg2: '#e9e4da', ground: '#8f8b84', grid: false, groundShow: true, groundOpacity: 1, fog: 0.0019, sunAz: 235, sunEl: 32, sunInt: 2.1, groundSize: 3000, exposure: 1.05 });
+  loadProjectData(P0);
+  const add = (type, opts) => addObject(type, Object.assign({ silent: true }, opts));
+  const rnd = mulberry(4417), pick = (a) => a[Math.floor(rnd() * a.length)];
+  // ---------- rua 45 m abaixo e os dois prédios ----------
+  const road = add('roadpath', { name: 'Rua', params: Object.assign(defaultParams('roadpath'), { lanes: 4, laneW: 3.2, shoulder: 0, sidewalk: true, guard: false, center: 'double', bridge: false, delin: false }) });
+  road.params.pts = [[-400, 0, 9.2], [400, 0, 9.2]]; buildRuntime(road);
+  const { E } = roadDims(road.params), zA = 9.2 - E, zB = 9.2 + E;              // fachadas encostadas nas calçadas
+  const FL = 3.4, FLOORS = 13, ROOF = FL * FLOORS;                               // 44,2 m
+  const bA = add('building', { name: 'Prédio A (saída)', params: Object.assign(defaultParams('building'), { width: 34, depth: 26, floors: FLOORS, floorH: FL, color: '#c3bdb1', glass: '#2f4252', style: 'grade' }), base: { px: 0, py: 0, pz: zA - 13 } });
+  const bB = add('building', { name: 'Prédio B (chegada)', params: Object.assign(defaultParams('building'), { width: 30, depth: 24, floors: FLOORS + 1, floorH: FL - 0.25, color: '#9aa2aa', glass: '#22313f', style: 'faixas' }), base: { px: 1.5, py: 0, pz: zB + 12 } });
+  const roofB = (FLOORS + 1) * (FL - 0.25);
+  // vizinhança: prédios dos dois lados da rua, de 6 a 22 andares
+  const fac = [['#b9b4aa', '#2b3a4a'], ['#8f979f', '#22313f'], ['#d6d1c7', '#34495c'], ['#6f7377', '#1d2833'], ['#c9bfae', '#3a4652'], ['#a7b4bf', '#1f3a55']];
+  for (const sz of [-1, 1]) for (const dir of [-1, 1]) { let x = dir > 0 ? 19 : -19; for (let i = 0; i < 9; i++) { const w = 14 + rnd() * 20, [c, gl] = pick(fac), d = 18 + rnd() * 14, cx = x + dir * w / 2; if (sz < 0 && dir > 0 && cx + w / 2 > 47 && cx - w / 2 < 75) { x += dir * (w + 3); continue; } add('building', { name: 'Prédio', params: Object.assign(defaultParams('building'), { width: w, depth: d, floors: Math.round(6 + rnd() * 16), floorH: 3.3, color: c, glass: gl, style: rnd() < .5 ? 'grade' : 'faixas' }), base: { px: x + dir * w / 2, py: 0, pz: sz < 0 ? zA - d / 2 - rnd() * 3 : zB + d / 2 + rnd() * 3 } }); x += dir * (w + 3 + rnd() * 6); } }
+  // prédio de onde a tele filma (tripé no telhado, 15 andares)
+  const camRoof = 15 * 3.4; add('building', { name: 'Prédio vizinho (câmera tele)', params: Object.assign(defaultParams('building'), { width: 18, depth: 18, floors: 15, floorH: 3.4, color: '#a9a39a', glass: '#2a3a48', style: 'grade' }), base: { px: 61, py: 0, pz: zA - 9 } });
+  // carros lá embaixo (dão escala e vertigem)
+  const civil = ['corolla', 'polo', 'compass', 'model3', 'dolphin', 'strada'], cols = ['#e9e9e6', '#c4c7cb', '#2b2d31', '#7d1f22', '#284a73', '#9a9ea3'];
+  for (let i = 0; i < 14; i++) { const k = pick(civil), lane = i % 4, dir = lane < 2 ? -1 : 1, x0 = -260 + rnd() * 520, v = (25 + rnd() * 20) / 3.6;
+    const o = add('realcar', { name: 'Carro', params: Object.assign(carDefaults(k), { modelName: CAR_DB[k].name, color: pick(cols) }) });
+    o.base.pz = 9.2 + (lane - 1.5) * 3.2; o.base.px = x0; o.base.ry = dir > 0 ? 90 : -90; setKey(o, 'px', 0, x0, 'linear'); setKey(o, 'px', DUR, x0 + dir * v * N / fps, 'linear'); buildRuntime(o); }
+  // ---------- a fita ----------
+  const AY = ROOF + 1.0, A = new THREE.Vector3(0, AY, zA - 0.8), BZ = zB + 0.8, SPAN = BZ - A.z, TENS = 6, KG = 72;
+  const line = add('highline', { name: 'Highline (fita 25 mm)', params: Object.assign(defaultParams('highline'), { span: SPAN, tension: TENS, weight: KG }), base: { px: 0, py: AY, pz: A.z } });
+  // ---------- simulação de equilíbrio ----------
+  const T = (f) => f / fps;
+  const phaseAt = (t) => t < 1.2 ? 'idle' : t < 7.6 ? 'walk' : t < 8.9 ? 'wob' : t < 11.6 ? 'crouch' : t < 13.4 ? 'idle' : 'walk';
+  const GAIN = { idle: [15, 4.2, 12, 2.0], walk: [15, 4.0, 12, 2.3], wob: [16, 3.0, 13, 1.2], crouch: [21, 6.5, 15, 1.0] };
+  const r2 = mulberry(77), gauss = () => { let u = 0, v = 0; while (u === 0) u = r2(); v = r2(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+  const SUB = 12, dt = 1 / (fps * SUB), DLY = Math.round(0.12 / dt); let th = 0, om = 0, nz = 0; const hist = Array(DLY + 1).fill([0, 0]);
+  const lean = [], uu = [];
+  for (let i = 0; i < N * SUB; i++) {
+    const t = i * dt, ph = phaseAt(t), Lc = ph === 'crouch' ? 0.72 : 1.0, [Kp, Kd, Um, sig] = GAIN[ph];
+    nz += -nz / 0.5 * dt + sig * Math.sqrt(dt) * gauss() * 0.28;
+    const imp = t >= 7.55 && t < 7.85 ? 2.0 : 0, [td, od] = hist.shift();
+    const u = clamp(Kp * td + Kd * od, -Um, Um);
+    om += (9.81 / Lc * Math.sin(th) - u + nz + imp) * dt; th += om * dt; hist.push([th, om]);
+    if (i % SUB === 0) { lean.push(th); uu.push(u / 4); }
+  }
+  const n1 = []; { let a = 0; for (let f = 0; f < N + 120; f++) { a += -a * 0.12 + (r2() - 0.5) * 0.5; n1.push(clamp(a, -1, 1)); } }
+  // ---------- caminhada na fita: posição s(t) ----------
+  const vAt = (t) => { const ramp = (x, a, b) => clamp((x - a) / (b - a), 0, 1); const w1 = ramp(t, 1.0, 1.6) * (1 - ramp(t, 7.3, 7.7)), w2 = ramp(t, 13.2, 13.9); return 0.42 * w1 + 0.46 * w2; };
+  const S = [6.0]; for (let f = 1; f < N; f++) S.push(S[f - 1] + vAt(T(f)) / fps);
+  // agachar faz a fita "quicar" (oscilação vertical amortecida ~1,3 Hz)
+  const bounce = (t) => { const t0 = 8.95; if (t < t0) return 0; const x = t - t0; return 0.07 * Math.exp(-x * 1.4) * Math.sin(2 * Math.PI * 1.3 * x); };
+  const walker = add('person', { name: 'Equilibrista', params: Object.assign(defaultParams('person'), { look: 'real', height: 1.76, pose: 'stand' }) });
+  const wx = [], wy = [], wz = [], wr = [];
+  for (let f = 0; f < N; f++) { const s = S[f], t = T(f); wz.push(A.z + s); wy.push(AY - highlineSag(SPAN, s, TENS, KG) - bounce(t) + 0.003); wx.push(-0.42 * Math.sin(lean[f]) + 0.03 * Math.sin(t * 2.1)); wr.push(lean[f] / DEG); }
+  writeSamples(walker, 'px', wx.map((v, f) => ({ f, v })), 'every'); writeSamples(walker, 'py', wy.map((v, f) => ({ f, v })), 'every'); writeSamples(walker, 'pz', wz.map((v, f) => ({ f, v })), 'every'); writeSamples(walker, 'rz', wr.map((v, f) => ({ f, v })), 'every');
+  walker.cons.ground = false; Object.assign(walker.base, { px: wx[0], py: wy[0], pz: wz[0] });
+  const sec = (t) => Math.round(t * fps);
+  walker.acts = [{ c: 'Idle_Loop', f0: 0, f1: sec(1.25), bl: 10 }, { c: 'Walk_Loop', f0: sec(1.25), f1: sec(7.55), rate: 'auto', bl: 10 }, { c: 'Idle_Loop', f0: sec(7.55), f1: sec(8.85), bl: 8, off: 0.6 },
+    { c: 'Crouch_Idle_Loop', f0: sec(8.85), f1: sec(11.6), bl: 12 }, { c: 'Idle_Loop', f0: sec(11.6), f1: sec(13.45), bl: 14, off: 1.1 }, { c: 'Walk_Loop', f0: sec(13.45), f1: DUR, rate: 'auto', bl: 10 }];
+  const crouchW = Array.from({ length: N }, (_, f) => { const t = T(f), r = (x, a, b) => clamp((x - a) / (b - a), 0, 1); const s = r(t, 8.6, 9.1) * (1 - r(t, 11.4, 11.9)); return s * s * (3 - 2 * s); });
+  walker.overlay = { kind: 'tightrope', lean: lean.map(v => +v.toFixed(4)), u: uu.map(v => +v.toFixed(3)), crouch: crouchW.map(v => +v.toFixed(3)), n1: n1.map(v => +v.toFixed(3)) };
+  buildRuntime(walker);
+  line.params.walker = walker.id; buildRuntime(line);
+  // ---------- câmeras ----------
+  const body = (o, b, ls) => { const B = CAMERA_BODIES[b], Ls = LENS_SETS[ls]; Object.assign(o.params, { body: b, sensorW: B.w, sensorH: B.h, lensSet: ls, squeeze: String(Ls.sq || 1), tstop: Ls.t, focusAuto: true }); };
+  const tgt = add('null', { name: 'Alvo: tronco do equilibrista' }); tgt.camHidden = true; tgt.cons.ground = false; tgt.cons.mount = walker.id; Object.assign(tgt.base, { px: 0, py: 1.15, pz: 0 }); buildRuntime(tgt);
+  const feetT = add('null', { name: 'Alvo: pés' }); feetT.camHidden = true; feetT.cons.ground = false; feetT.cons.mount = walker.id; Object.assign(feetT.base, { px: 0, py: 0.12, pz: 0.05 }); buildRuntime(feetT);
+  const W = (f) => new THREE.Vector3(wx[clamp(f, 0, DUR)], wy[clamp(f, 0, DUR)], wz[clamp(f, 0, DUR)]);
+  const cams = [];
+  const mkCam = (name, focal, opts) => { const c = addObject('camera', { silent: true, name, base: { px: 0, py: 1, pz: 0, focal } }); body(c, opts.body || 'alexa35', opts.lens || 'signature'); c.cons.shake = opts.shake ?? 0.15; c.cons.shakeFreq = opts.freq ?? 1.2; c.cons.aim = (opts.aim || tgt).id; c.cons.aimH = 0; if (opts.gear) c.gear = { type: opts.gear }; if (opts.surf != null) c.gear.surfaceY = opts.surf; if (opts.tstop) c.params.tstop = opts.tstop; cams.push(c); return c; };
+  const bake = (c, f0, f1, fn) => { const K = { px: [], py: [], pz: [] }; for (let f = Math.max(0, f0 - 6); f <= Math.min(DUR, f1 + 6); f++) { const u = clamp((f - f0) / Math.max(1, f1 - f0), 0, 1), p = fn(f, u * u * (3 - 2 * u), u); K.px.push({ f, v: p.x }); K.py.push({ f, v: p.y }); K.pz.push({ f, v: p.z }); } for (const ch in K) writeSamples(c, ch, K[ch], 'every'); Object.assign(c.base, { px: K.px[0].v, py: K.py[0].v, pz: K.pz[0].v }); };
+  // 1 · abertura: drone de lado, bem aberto, subindo devagar (mostra o vão e a rua lá embaixo)
+  const c1 = mkCam('01 Drone · abertura', 24, { gear: 'drone', body: 'inspire3', lens: 'generic', shake: 0.12 });
+  bake(c1, 0, sec(4.2), (f, s) => new THREE.Vector3(-62 + 16 * s, AY - 16 + 12 * s, 9.2 - 2.5 + 3 * s));  // no cânion da rua: a fita cruza por cima
+  // 2 · pés na fita (cable cam paralelo à fita, 1 m abaixo, 50 mm)
+  const c2 = mkCam('02 Pés na fita · cable', 50, { gear: 'cable', aim: feetT, tstop: 2.0, shake: 0.08, surf: AY - 6 });
+  bake(c2, sec(4.2), sec(7.2), (f) => { const p = W(f); return new THREE.Vector3(1.6, p.y - 0.55, p.z - 2.4 + (f - sec(4.2)) * 0.002); });
+  // 3 · tele no tronco/rosto durante o desequilíbrio (do prédio vizinho, 200 mm, tripé)
+  const c3 = mkCam('03 Tele · desequilíbrio', 200, { gear: 'tripod', lens: 'optimo', shake: 0.05, tstop: 2.8, surf: 15 * 3.4 });
+  bake(c3, sec(7.2), sec(10.6), () => new THREE.Vector3(53.2, camRoof + 1.6, zA - 1.2));
+  // 4 · vertigem: drone acima, olhando para baixo (agachado; a rua 45 m abaixo)
+  const c4 = mkCam('04 Vertigem · de cima', 18, { gear: 'drone', body: 'inspire3', lens: 'generic', shake: 0.08 });
+  bake(c4, sec(10.6), sec(13.6), (f, s) => { const p = W(f); const a = 0.4 + s * 0.55; return new THREE.Vector3(p.x + Math.sin(a) * 2.2, p.y + 7.5 + 2.5 * s, p.z + Math.cos(a) * 2.2 - 1.5); });
+  // 5 · contra-plongée da ancoragem de chegada: a fita converge para a lente
+  const c5 = mkCam('05 Linha · da ancoragem', 32, { gear: 'tripod', shake: 0.04, surf: roofB });
+  bake(c5, sec(13.6), sec(17), () => new THREE.Vector3(0.35, AY + 0.25, BZ + 1.1));
+  // 6 · final: drone orbitando meia volta, abrindo
+  const c6 = mkCam('06 Drone · órbita final', 35, { gear: 'drone', body: 'inspire3', lens: 'generic', shake: 0.1 });
+  bake(c6, sec(17), DUR, (f, s) => { const p = W(f), a = -0.9 + 1.5 * s, r = 9 + 7 * s; return new THREE.Vector3(p.x + Math.sin(a) * r, p.y + 1.5 + 3 * s, p.z + Math.cos(a) * r); });
+  project.shots = [[c1, 0, sec(4.2), 'Abertura · o vão', 'Drone voando pelo cânion da rua e subindo: a fita cruza entre os dois prédios, equilibrista pequeno no quadro, a rua 45 m abaixo.'], [c2, sec(4.2), sec(7.2), 'Pés na fita', 'Cable cam paralelo à fita, 50 mm: passos lentos, pés virados para fora, a fita balança.'], [c3, sec(7.2), sec(10.6), 'Desequilíbrio · tele', '200 mm do prédio vizinho: perde o equilíbrio, braços giram, agacha para recuperar.'], [c4, sec(10.6), sec(13.6), 'Vertigem', 'Drone acima olhando para baixo: agachado na fita, a rua lá embaixo.'], [c5, sec(13.6), sec(17), 'Da ancoragem', 'Câmera na ancoragem de chegada, a fita converge para a lente; ele volta a andar.'], [c6, sec(17), DUR, 'Órbita final', 'Drone faz meia volta abrindo o quadro.']]
+    .map(([c, start, end, name, notes]) => ({ cam: c.id, start, end, name, notes }));
+  normalizeShots(); project.activeCamera = c1.id;
+  rebuildAll(); applyFrame(0); commit(); renderOutliner(); renderInspector(); tlDirty = true; renderViewSel(); setView('cam');
+  return { walker, line, cams, maxLean: Math.max(...lean.map(Math.abs)) / DEG, sEnd: S[N - 1] };
+}
+
+/* ============================================================
+   EXEMPLO · Perseguição (ação) — 16,5 s
+   Sprint → olha para trás → pula o capô de um carro → rolamento →
+   virada brusca para um beco → freia, olha em volta, se esconde atrás da caçamba.
+   O perseguidor passa pela boca do beco sem vê-lo.
+   Física: voo balístico (g = 9,81), inclinação na curva = atan(v·ω/g), frenagem ~7 m/s².
+   ============================================================ */
+function buildChase() {
+  const fps = 24, g = 9.81;
+  const P0 = newProject(); P0.name = 'Perseguição — beco (ação)'; P0.fps = fps; P0.aspect = '2.39:1';
+  Object.assign(P0.settings, { sky: '#b9c6d3', bg2: '#efe2cf', ground: '#7d7a75', grid: false, groundShow: true, groundOpacity: 1, fog: 0.004, sunAz: 250, sunEl: 21, sunInt: 2.2, groundSize: 2000, exposure: 1.05 });
+  loadProjectData(P0);
+  const add = (type, opts) => addObject(type, Object.assign({ silent: true }, opts));
+  const rnd = mulberry(909), pick = (a) => a[Math.floor(rnd() * a.length)];
+  // ---------- rua, prédios e o beco ----------
+  const road = add('roadpath', { name: 'Rua', params: Object.assign(defaultParams('roadpath'), { lanes: 2, laneW: 3.5, shoulder: 0, sidewalk: true, guard: false, center: 'double', bridge: false, delin: false }) });
+  road.params.pts = [[0, 0, -90], [0, 0, 140]]; buildRuntime(road);
+  const { E } = roadDims(road.params), AZ0 = 42.2, AZ1 = 46.6, AZ = (AZ0 + AZ1) / 2, AX1 = -31;   // beco: z 42,2–46,6, de x = −E até a parede
+  const fac = [['#a59a8b', '#2b3440'], ['#8c8f92', '#1d2630'], ['#b7a68f', '#33404c'], ['#6e6a66', '#1e2228'], ['#c2b6a4', '#2f3b46'], ['#7f8a90', '#1f2c38']];
+  const bld = (x0, x1, z0, z1, floors, name) => { const [c, gl] = pick(fac); add('building', { name: name || 'Prédio', params: Object.assign(defaultParams('building'), { width: Math.abs(x1 - x0), depth: Math.abs(z1 - z0), floors, floorH: 3.3, color: c, glass: gl, style: rnd() < .5 ? 'grade' : 'faixas' }), base: { px: (x0 + x1) / 2, py: 0, pz: (z0 + z1) / 2 } }); };
+  for (const sx of [-1, 1]) { let z = -90; while (z < 140) { const w = 12 + rnd() * 16; let z1 = z + w; if (sx < 0 && z < AZ1 && z1 > AZ0) { if (z < AZ0 - 4) bld(-E - 0.4, -E - 40, z, AZ0, Math.round(5 + rnd() * 6), 'Prédio (beco)'); z = AZ1; continue; } bld(sx * (E + 0.4), sx * (E + 0.4 + 18 + rnd() * 10), z, Math.min(z1, 140), Math.round(4 + rnd() * 8)); z = z1 + 0.6; } }
+  bld(-E - 0.4, -E - 40, AZ1, AZ1 + 18, 7, 'Prédio (beco)');
+  add('wall', { name: 'Muro do fim do beco', params: Object.assign(defaultParams('wall'), { length: AZ1 - AZ0 + 0.4, height: 3.2, thick: 0.3, color: '#8a8178' }), base: { px: AX1, py: 0, pz: AZ, ry: 90 } });
+  const dump = add('box', { name: 'Caçamba de lixo', params: Object.assign(defaultParams('box'), { w: 1.1, h: 1.25, d: 1.9, color: '#2f5d3a' }), base: { px: -22.4, py: 0, pz: AZ + 1.0 } });
+  for (const [x, z, w, h, d, c] of [[-12, AZ0 + 0.4, 0.6, 0.5, 0.6, '#8b6b45'], [-12.6, AZ0 + 0.45, 0.5, 0.4, 0.5, '#7a5d3b'], [-17, AZ1 - 0.4, 0.8, 1.0, 0.6, '#5a5f66'], [-27.5, AZ0 + 0.5, 0.7, 0.9, 0.7, '#3d4248'], [-8.5, AZ1 - 0.35, 0.45, 0.9, 0.45, '#3a6b8f']])
+    add('box', { name: 'Entulho', params: Object.assign(defaultParams('box'), { w, h, d, color: c }), base: { px: x, py: 0, pz: z } });
+  for (const sx of [-1, 1]) for (let z = -80; z < 140; z += 26) if (!(sx < 0 && z > AZ0 - 3 && z < AZ1 + 3)) add('lamp', { name: 'Poste', params: { height: 7 }, base: { px: sx * (E - 0.4), py: 0, pz: z, ry: sx > 0 ? -90 : 90 } });
+  // carros estacionados junto ao meio-fio + o carro parado atravessado (o que ele pula)
+  const civil = ['corolla', 'polo', 'compass', 'model3', 'strada'], cols = ['#e9e9e6', '#c4c7cb', '#2b2d31', '#7d1f22', '#284a73', '#9a9ea3'];
+  for (const sx of [-1, 1]) for (let z = -70; z < 130; z += 7 + rnd() * 9) { if (Math.abs(z - 24) < 9 || (sx < 0 && z > AZ0 - 7 && z < AZ1 + 3)) continue; const k = pick(civil); add('realcar', { name: 'Estacionado', params: Object.assign(carDefaults(k), { modelName: CAR_DB[k].name, color: pick(cols) }), base: { px: sx * 2.6, py: 0, pz: z, ry: sx > 0 ? 180 : 0 } }); }
+  const jc = add('realcar', { name: 'Carro parado (ele pula o capô)', params: Object.assign(carDefaults('corolla'), { modelName: CAR_DB.corolla.name, color: '#b8bcc2' }) });
+  const JCZ = 24; Object.assign(jc.base, { px: -0.55 + jc.params.length / 2, py: 0, pz: JCZ, ry: -90 }); buildRuntime(jc);
+  // ---------- trajeto do fugitivo ----------
+  const curve = new THREE.CatmullRomCurve3([[0, 0, -12], [0, 0, 10], [0, 0, 30], [0.1, 0, 36.5], [-1.2, 0, 41.4], [-5.2, 0, AZ - 0.2], [-10, 0, AZ], [-26, 0, AZ]].map(a => new THREE.Vector3(...a)), false, 'centripetal');
+  const LEN = curve.getLength(), at = (s) => curve.getPointAt(clamp(s / LEN, 0, 1)), tan = (s) => curve.getTangentAt(clamp(s / LEN, 0, 1));
+  const sOfZ = (z) => { let lo = 0, hi = LEN; for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; if (at(m).z < z) lo = m; else hi = m; } return lo; };
+  const JH = 1.05, S_TO = sOfZ(20.9), S_LAND = sOfZ(26.9), FLIGHT = Math.sqrt(8 * JH / g);      // voo balístico para subir 1,05 m: 0,93 s
+  const ROLL_T = [0, 0.365, 0.73, 1.095, 1.46], ROLL_Z = [0, 2.03, 4.25, 4.94, 5.02], ROFF = 0.3;  // curva de deslocamento do Roll_RM
+  const rollZ = (t) => { let i = 0; while (i < 3 && t > ROLL_T[i + 1]) i++; const u = clamp((t - ROLL_T[i]) / (ROLL_T[i + 1] - ROLL_T[i]), 0, 1); return lerp(ROLL_Z[i], ROLL_Z[i + 1], u * u * (3 - 2 * u) * 0.35 + u * 0.65); };
+  const V = 6.4, VTURN = 4.9;
+  // integra o tempo
+  const H = []; let s = 0, t = 0, v = V, phase = 'run1', tTO = 0, tLand = 0, tRollEnd = 0, tStop = 0;
+  const sTurn0 = sOfZ(33.5), sTurn1 = sOfZ(AZ) + 4, sStop = LEN - 1.5;
+  while (true) {
+    const f = H.length; t = f / fps;
+    if (phase === 'run1') { if (s >= S_TO) { phase = 'air'; tTO = t; } }
+    if (phase === 'air') { const u = (t - tTO) / FLIGHT; if (u >= 1) { phase = 'roll'; tLand = t; s = S_LAND; } }
+    if (phase === 'roll') { const tr = t - tLand + ROFF; if (tr >= 1.46) { phase = 'run2'; tRollEnd = t; v = 2.6; } }
+    let y = 0;
+    if (phase === 'air') { const u = (t - tTO) / FLIGHT; s = lerp(S_TO, S_LAND, u); y = 4 * JH * u * (1 - u); }
+    else if (phase === 'roll') { s = S_LAND + rollZ(t - tLand + ROFF) - rollZ(ROFF); }
+    else if (phase === 'run2') { const vt = s > sTurn0 - 3 && s < sTurn1 ? VTURN : V; const brake = Math.sqrt(Math.max(0, 2 * 7 * (sStop - s))); v = Math.min(v + 3.2 / fps, vt, brake); if (v > vt) v = Math.max(vt, v - 6 / fps); if (s >= sStop - 0.02 || v < 0.05) { phase = 'stop'; tStop = t; v = 0; } }
+    const p = at(s); H.push({ f, t, s, x: p.x, y, z: p.z, ph: phase });
+    if (phase === 'run1' || phase === 'run2') s += v / fps;
+    if (phase === 'stop' && t - tStop > 4.2) break;
+    if (H.length > 900) break;
+  }
+  const DUR = H.length - 1, N = H.length; project.duration = DUR;
+  // direção (ry), giro final e inclinação na curva
+  const hd = H.map(h => { const d = tan(h.s); return Math.atan2(d.x, d.z); });
+  for (let i = 1; i < N; i++) { while (hd[i] - hd[i - 1] > Math.PI) hd[i] -= 2 * Math.PI; while (hd[i] - hd[i - 1] < -Math.PI) hd[i] += 2 * Math.PI; }
+  const fStop = Math.round(tStop * fps), TURN0 = fStop + 6, TURN1 = TURN0 + 17;
+  const ry = hd.map((a, i) => { const u = clamp((i - TURN0) / (TURN1 - TURN0), 0, 1); return a + Math.PI * u * u * (3 - 2 * u); });   // vira para trás depois de parar
+  const spd = H.map((h, i) => i ? Math.hypot(h.x - H[i - 1].x, h.z - H[i - 1].z) * fps : V);
+  const lean = ry.map((a, i) => { if (i === 0 || i >= TURN0) return 0; const w = (a - ry[i - 1]) * fps; return -Math.atan(spd[i] * w / g); });
+  const leanS = lean.map((_, i) => { let a = 0, n = 0; for (let j = -3; j <= 3; j++) { const k = clamp(i + j, 0, N - 1); a += lean[k]; n++; } return a / n; });
+  const runner = add('person', { name: 'Fugitivo', params: Object.assign(defaultParams('person'), { look: 'real', height: 1.78, skinMat: 'tex' }) });
+  writeSamples(runner, 'px', H.map(h => ({ f: h.f, v: h.x })), 'every'); writeSamples(runner, 'pz', H.map(h => ({ f: h.f, v: h.z })), 'every'); writeSamples(runner, 'py', H.map(h => ({ f: h.f, v: h.y })), 'every');
+  writeSamples(runner, 'ry', ry.map((v2, f) => ({ f, v: v2 / DEG })), 'every'); writeSamples(runner, 'rz', leanS.map((v2, f) => ({ f, v: v2 / DEG })), 'every');
+  runner.cons.ground = false; Object.assign(runner.base, { px: H[0].x, py: 0, pz: H[0].z, ry: ry[0] / DEG });
+  const F = (sec) => Math.round(sec * fps), fTO = F(tTO), fLand = F(tLand), fRE = F(tRollEnd);
+  runner.acts = [
+    { c: 'Sprint_Loop', f0: 0, f1: fTO - 1, rate: 'auto', bl: 4 },
+    { c: 'Sprint_Loop', f0: fTO - 1, f1: fLand - 1, rate: 0.26, off: 0.14, bl: 4 },   // salto em corrida: passada "congelada" (barreira)
+    { c: 'Roll', f0: fLand, f1: fRE, off: ROFF, bl: 4 },
+    { c: 'Sprint_Loop', f0: fRE, f1: fStop - 3, rate: 'auto', bl: 7 },
+    { c: 'Idle_Loop', f0: fStop - 3, f1: TURN1 + 18, bl: 8, off: 0.4 },
+    { c: 'Crouch_Idle_Loop', f0: TURN1 + 18, f1: DUR, bl: 12 }];
+  // olhares: para trás por cima do ombro, espiada no beco, procura em volta, espia por cima da caçamba
+  runner.overlay = { kind: 'look', keys: [[0, 0, 0], [F(1.5), 0, 0], [F(1.85), -105, 8], [F(2.35), -105, 8], [F(2.7), 0, 0], [fRE + 30, 0, 0], [fRE + 36, 70, 5], [fRE + 46, 70, 5], [fRE + 52, 0, 0], [fStop, 0, 0], [fStop + 4, -60, -5], [fStop + 10, -60, -5], [fStop + 15, 55, -5], [fStop + 22, 55, -5], [TURN1, 0, 0], [TURN1 + 30, 0, 10], [TURN1 + 44, -18, 2], [DUR, -12, 0]] };
+  buildRuntime(runner);
+  // ---------- perseguidor: dá a volta no carro, passa pela boca do beco e para procurando ----------
+  const pc = new THREE.CatmullRomCurve3([[1.9, 0, -42], [1.9, 0, 17], [-1.6, 0, 21.5], [-1.6, 0, 26.5], [1.2, 0, 31], [1.4, 0, 52], [1.6, 0, 70]].map(a => new THREE.Vector3(...a)), false, 'centripetal');
+  const PL = pc.getLength(), sOfZp = (z) => { let lo = 0, hi = PL; for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; if (pc.getPointAt(m / PL).z < z) lo = m; else hi = m; } return lo; };
+  const sPStop = sOfZp(AZ + 0.3), PV = 6.1, PH = []; { let sp = 0, vp = PV, stopT = -1;
+    for (let f = 0; f < N; f++) { const tt = f / fps; if (stopT < 0) { const br = Math.sqrt(Math.max(0, 2 * 6.5 * (sPStop - sp))); vp = Math.min(PV, br); if (vp < 0.05) stopT = tt; } else if (tt - stopT > 1.7) vp = Math.min(3.2, vp + 2 / fps); else vp = 0;
+      const p = pc.getPointAt(clamp(sp / PL, 0, 1)), d = pc.getTangentAt(clamp(sp / PL, 0, 1)); PH.push({ f, x: p.x, z: p.z, ry: Math.atan2(d.x, d.z), v: vp, stopT }); sp += vp / fps; } }
+  const pursuer = add('person', { name: 'Perseguidor', params: Object.assign(defaultParams('person'), { look: 'real', height: 1.83, skinMat: 'clay' }) });
+  writeSamples(pursuer, 'px', PH.map(h => ({ f: h.f, v: h.x })), 'every'); writeSamples(pursuer, 'pz', PH.map(h => ({ f: h.f, v: h.z })), 'every'); writeSamples(pursuer, 'ry', PH.map(h => ({ f: h.f, v: h.ry / DEG })), 'every');
+  Object.assign(pursuer.base, { px: PH[0].x, pz: PH[0].z, ry: PH[0].ry / DEG });
+  const pStopF = PH.findIndex(h => h.v < 0.05 && h.f > 10), pGoF = pStopF > 0 ? pStopF + Math.round(1.7 * fps) : DUR;
+  pursuer.acts = pStopF > 0 ? [{ c: 'Sprint_Loop', f0: 0, f1: pStopF - 2, rate: 'auto', bl: 6 }, { c: 'Idle_Loop', f0: pStopF - 2, f1: pGoF, bl: 8 }, { c: 'Jog_Fwd_Loop', f0: pGoF, f1: DUR, rate: 'auto', bl: 8 }] : [{ c: 'Sprint_Loop', f0: 0, f1: DUR, rate: 'auto' }];
+  if (pStopF > 0) pursuer.overlay = { kind: 'look', keys: [[0, 0, 0], [pStopF, 0, 0], [pStopF + 5, -85, 4], [pStopF + 20, -85, 4], [pStopF + 27, 55, 0], [pStopF + 36, 55, 0], [pGoF, 0, 0]] };
+  buildRuntime(pursuer);
+  // ---------- câmeras ----------
+  const body = (o, b, ls) => { const B = CAMERA_BODIES[b], Ls = LENS_SETS[ls]; Object.assign(o.params, { body: b, sensorW: B.w, sensorH: B.h, lensSet: ls, squeeze: String(Ls.sq || 1), tstop: Ls.t, focusAuto: true }); };
+  const mkCam = (name, focal, o) => { const c = addObject('camera', { silent: true, name, base: { px: 0, py: 1.4, pz: 0, focal } }); body(c, o.body || 'alexamini', o.lens || 'signature'); c.cons.shake = o.shake ?? 0.3; c.cons.shakeFreq = o.freq ?? 2; if (o.gear) c.gear = { type: o.gear }; if (o.tstop) c.params.tstop = o.tstop; return c; };
+  const writeP = (c, P2) => { for (const ch of ['x', 'y', 'z']) writeSamples(c, 'p' + ch, P2.map((p, f) => ({ f, v: p[ch] })), 'every'); Object.assign(c.base, { px: P2[0].x, py: P2[0].y, pz: P2[0].z }); };
+  const nrand = mulberry(31), ou = (n, tau, amp) => { const out = []; let a = 0; for (let i = 0; i < n; i++) { a += -a / tau + (nrand() - 0.5) * amp; out.push(a); } return out; };
+  // alvo da mira: peito do fugitivo, com atraso e tremida (o operador "corrige" o quadro sempre um pouco atrasado)
+  const aimN = add('null', { name: 'Alvo: fugitivo (com atraso)' }); aimN.camHidden = true; aimN.cons.ground = false;
+  const jx = ou(N, 5, 0.09), jy = ou(N, 5, 0.06), lagA = 2.5;
+  const AIM = H.map((h, i) => { const k = Math.max(0, i - lagA), i0 = Math.floor(k), u = k - i0, a = H[i0], b = H[Math.min(N - 1, i0 + 1)]; const fw = new THREE.Vector3(Math.sin(ry[i]), 0, Math.cos(ry[i])); const crouch = i > TURN1 + 12 ? clamp((i - TURN1 - 12) / 16, 0, 1) : 0; return new THREE.Vector3(lerp(a.x, b.x, u) + fw.x * 0.4 + jx[i], lerp(a.y, b.y, u) + 1.2 - 0.45 * crouch + jy[i], lerp(a.z, b.z, u) + fw.z * 0.4 + jx[(i + 97) % N]); });
+  writeP(aimN, AIM); buildRuntime(aimN);
+  // 1 · FPV colado: offset no referencial do fugitivo (atrás/lado/altura), mola com sobressinal + vibração de voo
+  const fpv = mkCam('01 FPV · colado nele', 20, { gear: 'fpv', body: 'komodo', lens: 'generic', shake: 0.35, freq: 3.2 });
+  fpv.cons.aim = aimN.id; fpv.cons.aimH = 0;
+  const OFF = [[0, 4.2, 1.4, 1.5], [1.5, 3.0, 1.0, 1.3], [2.6, 2.4, -0.7, 1.1], [tTO - 0.2, 3.3, -1.3, 0.85], [tRollEnd, 3.2, 0.8, 1.55], [tRollEnd + 1.1, 2.6, 1.6, 1.45], [tRollEnd + 2.3, 2.2, 0.35, 1.25], [tStop - 0.6, 2.1, -0.25, 1.3], [tStop + 1.5, 2.8, 0.1, 1.45], [DUR / fps, 3.0, 0.2, 1.5]];
+  const offAt = (tt) => { let i = 0; while (i < OFF.length - 2 && tt > OFF[i + 1][0]) i++; const a = OFF[i], b = OFF[i + 1], u = clamp((tt - a[0]) / Math.max(1e-3, b[0] - a[0]), 0, 1), sm = u * u * (3 - 2 * u); return [lerp(a[1], b[1], sm), lerp(a[2], b[2], sm), lerp(a[3], b[3], sm)]; };
+  const hdS = hd.map((_, i) => { let a = 0, n = 0; for (let j = -6; j <= 6; j++) { a += hd[clamp(i + j, 0, N - 1)]; n++; } return a / n; });
+  const tgtP = H.map((h, i) => { const [bk, sd, up] = offAt(h.t), a = hdS[Math.min(i, fStop)]; const fw = new THREE.Vector3(Math.sin(a), 0, Math.cos(a)), lf = new THREE.Vector3(Math.cos(a), 0, -Math.sin(a)); return new THREE.Vector3(h.x, 0, h.z).addScaledVector(fw, -bk).addScaledVector(lf, sd).setY(up + h.y * 0.5); });
+  const P1 = [], w0 = 8.5, ze = 0.55, sub = 8, dts = 1 / (fps * sub); let cp = tgtP[0].clone(), cv = new THREE.Vector3(spd[0] * Math.sin(hd[0]), 0, spd[0] * Math.cos(hd[0]));
+  const bx = ou(N, 4, 0.05), by = ou(N, 3, 0.05);
+  for (let i = 0; i < N; i++) { for (let k = 0; k < sub; k++) { const acc = tgtP[i].clone().sub(cp).multiplyScalar(w0 * w0).addScaledVector(cv, -2 * ze * w0); cv.addScaledVector(acc, dts); cp.addScaledVector(cv, dts); } const tt = i / fps; P1.push(cp.clone().add(new THREE.Vector3(bx[i] + 0.025 * Math.sin(tt * 2 * Math.PI * 1.45), by[i] + 0.035 * Math.sin(tt * 2 * Math.PI * 2.9), bx[(i + 151) % N]))); }
+  // nunca abaixo de 0,55 m, nem dentro das paredes do beco
+  P1.forEach(p => { p.y = Math.max(0.55, p.y); if (p.x < -E - 0.2) p.z = clamp(p.z, AZ0 + 0.45, AZ1 - 0.45); });
+  writeP(fpv, P1);
+  const latA = P1.map((p, i) => { if (i < 2 || i > N - 2) return 0; const a1 = P1[i + 1].clone().sub(p), a0 = p.clone().sub(P1[i - 1]); const ac = a1.sub(a0).multiplyScalar(fps * fps); const fw = P1[i + 1].clone().sub(P1[i - 1]).setY(0).normalize(); const rt = new THREE.Vector3(-fw.z, 0, fw.x); return clamp(ac.dot(rt) * 0.9, -9, 9); });
+  writeSamples(fpv, 'rz', latA.map((v2, f) => ({ f, v: v2 })), 'every'); buildRuntime(fpv);
+  // 2 · câmera rente ao chão do outro lado do carro: ele voa por cima da lente (14 mm, hi-hat)
+  const low = mkCam('02 Rente ao chão · pulo', 14, { gear: 'tripod', body: 'alexamini', lens: 'signature', shake: 0.12, freq: 1.4 });
+  low.cons.aim = aimN.id; low.cons.aimH = 0; Object.assign(low.base, { px: -2.6, py: 0.32, pz: JCZ + 3.2 }); buildRuntime(low);
+  // 3 · na mão, no beco: operador ofegante, reenquadra atrasado
+  const hh = mkCam('03 Na mão · beco', 28, { gear: 'handheld', body: 'alexamini', lens: 'signature', shake: 0.85, freq: 2.3 });
+  hh.cons.aim = aimN.id; hh.cons.aimH = 0;
+  const hx = ou(N, 6, 0.08); writeP(hh, H.map((h, i) => { const u = clamp((i - (fStop - 30)) / 60, 0, 1); return new THREE.Vector3(-14.5 - 3.2 * u + hx[i], 1.58 + 0.03 * Math.sin(i / fps * 2 * Math.PI * 1.9), AZ - 0.7 + hx[(i + 50) % N] * 0.6); })); buildRuntime(hh);
+  // 4 · por cima do ombro, escondido atrás da caçamba: cabeça dele na borda do quadro, a boca do beco ao fundo (perseguidor)
+  const cl = mkCam('04 Por cima do ombro · caçamba', 40, { gear: 'handheld', body: 'alexamini', lens: 'signature', shake: 0.4, freq: 1.8, tstop: 2.0 });
+  const mouthT = add('null', { name: 'Alvo: boca do beco' }); mouthT.camHidden = true; mouthT.cons.ground = false; Object.assign(mouthT.base, { px: -4, py: 1.05, pz: AZ + 0.15 }); buildRuntime(mouthT);
+  cl.cons.aim = mouthT.id; cl.cons.aimH = 0; Object.assign(cl.base, { px: H[N - 1].x - 1.05, py: 1.0, pz: AZ - 0.42 }); buildRuntime(cl);
+  // ---------- montagem ----------
+  const cut1 = fTO - F(0.35), cut2 = fRE - F(0.2), cut3 = fStop - F(0.9), cut4 = TURN1 + 14;
+  project.shots = [[fpv, 0, cut1, 'FPV colado · sprint', 'Drone FPV a 2–4 m dele, mola com sobressinal, vibração de voo; olha para trás por cima do ombro.'], [low, cut1, cut2, 'Pulo · rente ao chão', '14 mm no asfalto do outro lado do carro: ele voa por cima do capô e cai rolando.'], [fpv, cut2, cut3, 'FPV · virada no beco', 'Volta no FPV: retoma a corrida, a câmera abre na curva e entra colada no beco.'], [hh, cut3, cut4, 'Na mão · freada', 'Operador ofegante no beco: ele freia, procura em volta, vira.'], [cl, cut4, DUR, 'Escondido · por cima do ombro', '40 mm por cima do ombro, agachado atrás da caçamba: o perseguidor para na boca do beco, olha para dentro e não o vê.']]
+    .map(([c, start, end, name, notes]) => ({ cam: c.id, start, end, name, notes }));
+  normalizeShots(); project.activeCamera = fpv.id;
+  rebuildAll(); applyFrame(0); commit(); renderOutliner(); renderInspector(); tlDirty = true; renderViewSel(); setView('cam');
+  return { runner, pursuer, dur: (DUR + 1) / fps, tTO, tLand, tRollEnd, tStop, maxLean: Math.max(...leanS.map(Math.abs)) / DEG, pStop: pStopF / fps };
+}
 
 init();
 try { applyDevice(true); } catch (e) { console.warn('responsivo', e); }
